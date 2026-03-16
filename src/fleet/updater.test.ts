@@ -280,8 +280,8 @@ describe("ContainerUpdater", () => {
       docker.getContainer.mockReturnValue(startingContainer);
 
       const promise = updater.updateBot("bot-1");
-      // Advance past the 60s timeout (60_000ms) in increments of poll interval (5_000ms)
-      for (let i = 0; i < 13; i++) {
+      // Advance past the 120s timeout (120_000ms) in increments of poll interval (5_000ms)
+      for (let i = 0; i < 25; i++) {
         await vi.advanceTimersByTimeAsync(5_000);
       }
       const result = await promise;

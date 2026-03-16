@@ -60,10 +60,14 @@ class MockBotNotFoundError extends Error {
   }
 }
 
-const fleetMock = {
-  create: vi.fn(),
+const mockFleetInstance = {
   start: vi.fn(),
   stop: vi.fn(),
+};
+
+const fleetMock = {
+  create: vi.fn(),
+  getInstance: vi.fn().mockResolvedValue(mockFleetInstance),
   restart: vi.fn(),
   remove: vi.fn(),
   status: vi.fn(),
@@ -100,8 +104,7 @@ vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
   return {
     FleetManager: class {
       create = fleetMock.create;
-      start = fleetMock.start;
-      stop = fleetMock.stop;
+      getInstance = fleetMock.getInstance;
       restart = fleetMock.restart;
       remove = fleetMock.remove;
       status = fleetMock.status;
@@ -220,6 +223,10 @@ describe("fleet routes", () => {
       if (id === TEST_BOT_ID) return Promise.resolve(mockProfile);
       return Promise.resolve(null);
     });
+    // Reset getInstance and its instance mock so tests don't bleed into each other
+    fleetMock.getInstance.mockResolvedValue(mockFleetInstance);
+    mockFleetInstance.start.mockResolvedValue(undefined);
+    mockFleetInstance.stop.mockResolvedValue(undefined);
 
     // Set default credit ledger mock (tests can override as needed)
     creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(1000)); // 1000 cents = $10
@@ -743,7 +750,7 @@ describe("fleet routes", () => {
 
   describe("POST /fleet/bots/:id/start", () => {
     it("starts a bot", async () => {
-      fleetMock.start.mockResolvedValue(undefined);
+      mockFleetInstance.start.mockResolvedValue(undefined);
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
@@ -752,8 +759,8 @@ describe("fleet routes", () => {
     });
 
     it("returns 404 for missing bot", async () => {
-      fleetMock.start.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
-
+      // profiles.get returns null for MISSING_BOT_ID (set in beforeEach),
+      // so validateTenantOwnership returns 404 before getInstance is called.
       const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(404);
     });
@@ -769,7 +776,7 @@ describe("fleet routes", () => {
       expect(body.required).toBe(17);
       expect(body.buyUrl).toBe("/dashboard/credits");
 
-      expect(fleetMock.start).not.toHaveBeenCalled();
+      expect(fleetMock.getInstance).not.toHaveBeenCalled();
     });
 
     it("returns 402 when tenant balance is below minimum (17 cents)", async () => {
@@ -781,24 +788,25 @@ describe("fleet routes", () => {
       expect(body.error).toBe("insufficient_credits");
       expect(body.balance).toBe(16);
 
-      expect(fleetMock.start).not.toHaveBeenCalled();
+      expect(fleetMock.getInstance).not.toHaveBeenCalled();
     });
 
     it("allows start when tenant has sufficient credit balance", async () => {
       creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(17));
-      fleetMock.start.mockResolvedValue(undefined);
+      mockFleetInstance.start.mockResolvedValue(undefined);
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
-      expect(fleetMock.start).toHaveBeenCalledWith(TEST_BOT_ID);
+      expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+      expect(mockFleetInstance.start).toHaveBeenCalled();
     });
   });
 
   describe("POST /fleet/bots/:id/stop", () => {
     it("stops a bot", async () => {
-      fleetMock.stop.mockResolvedValue(undefined);
+      mockFleetInstance.stop.mockResolvedValue(undefined);
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/stop`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);

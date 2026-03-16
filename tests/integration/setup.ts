@@ -32,10 +32,14 @@ export const JSON_HEADERS = { "Content-Type": "application/json", ...AUTH_HEADER
 // ---------------------------------------------------------------------------
 
 // Fleet / Docker mocks
-export const fleetMock = {
-  create: vi.fn(),
+export const mockFleetInstance = {
   start: vi.fn(),
   stop: vi.fn(),
+};
+
+export const fleetMock = {
+  create: vi.fn(),
+  getInstance: vi.fn().mockResolvedValue(mockFleetInstance),
   restart: vi.fn(),
   remove: vi.fn(),
   status: vi.fn(),
@@ -75,8 +79,7 @@ vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
   return {
     FleetManager: class {
       create = fleetMock.create;
-      start = fleetMock.start;
-      stop = fleetMock.stop;
+      getInstance = fleetMock.getInstance;
       restart = fleetMock.restart;
       remove = fleetMock.remove;
       status = fleetMock.status;

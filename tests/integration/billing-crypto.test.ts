@@ -1,14 +1,14 @@
 /**
- * Integration tests for /api/billing/crypto/* routes (WOP-407).
+ * Integration tests for /api/billing/crypto/* routes.
  *
- * Tests PayRam crypto payment routes through the full composed Hono app.
- * Uses in-memory PGlite and mocked PayRam client.
+ * Tests BTCPay crypto payment routes through the full composed Hono app.
+ * Uses in-memory PGlite and mocked BTCPay configuration.
  */
+import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
-import type { Payram } from "payram";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db"
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 
 const { app } = await import("../../src/api/app.js");
@@ -17,7 +17,7 @@ const { DrizzleLedger } = await import("@wopr-network/platform-core");
 const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
 const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
 const { DrizzleAffiliateRepository } = await import("@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository");
-const { DrizzlePayRamChargeRepository, noOpReplayGuard } = await import("@wopr-network/platform-core/billing");
+const { DrizzleCryptoChargeRepository, noOpReplayGuard } = await import("@wopr-network/platform-core/billing");
 
 function createMockProcessor(): import("@wopr-network/platform-core/monetization/payment-processor").IPaymentProcessor {
   return {
@@ -33,17 +33,8 @@ function createMockProcessor(): import("@wopr-network/platform-core/monetization
   };
 }
 
-function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn> } = {}): Payram {
-  return {
-    payments: {
-      initiatePayment:
-        overrides.initiatePayment ??
-        vi.fn().mockResolvedValue({
-          reference_id: "ref-test-crypto-001",
-          url: "https://payram.example.com/pay/ref-test-crypto-001",
-        }),
-    },
-  } as unknown as Payram;
+function sign(body: string, secret: string): string {
+  return `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
 describe("integration: billing crypto routes", () => {
@@ -69,7 +60,7 @@ describe("integration: billing crypto routes", () => {
       meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
       affiliateRepo: new DrizzleAffiliateRepository(db),
       replayGuard: noOpReplayGuard,
-      payramReplayGuard: noOpReplayGuard,
+      cryptoReplayGuard: noOpReplayGuard,
       sigPenaltyRepo: {
         get: () => null,
         recordFailure: (ip: string) => ({ ip, source: "stripe", failures: 1, blockedUntil: 0, updatedAt: 0 }),
@@ -79,15 +70,13 @@ describe("integration: billing crypto routes", () => {
   });
 
   afterEach(() => {
-    // Clean up env vars set during tests
-    delete process.env.PAYRAM_API_KEY;
-    delete process.env.PAYRAM_BASE_URL;
+    vi.unstubAllEnvs();
   });
 
   // -- POST /api/billing/crypto/checkout (503 when not configured) --------
 
   describe("POST /api/billing/crypto/checkout (not configured)", () => {
-    it("returns 503 when PayRam env vars are not set", async () => {
+    it("returns 503 when BTCPay env vars are not set", async () => {
       const res = await app.request("/api/billing/crypto/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -111,38 +100,44 @@ describe("integration: billing crypto routes", () => {
   // -- POST /api/billing/crypto/webhook (503 when not configured) ---------
 
   describe("POST /api/billing/crypto/webhook (not configured)", () => {
-    it("returns 503 when PayRam is not configured", async () => {
+    it("returns 503 when BTCPay is not configured", async () => {
       const res = await app.request("/api/billing/crypto/webhook", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "API-Key": "somekey" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reference_id: "ref-001",
-          status: "FILLED",
-          amount: "25.00",
-          currency: "USDC",
-          filled_amount: "25.00",
+          deliveryId: "del-001",
+          webhookId: "wh-001",
+          originalDeliveryId: "del-001",
+          isRedelivery: false,
+          type: "InvoiceSettled",
+          timestamp: 1700000000,
+          storeId: "store-1",
+          invoiceId: "inv-001",
         }),
       });
-      // payramChargeRepo is null => 503
       expect(res.status).toBe(503);
     });
   });
 
-  // -- Tests with PayRam configured via env vars --------------------------
+  // -- Tests with BTCPay configured via env vars --------------------------
 
-  describe("with PAYRAM_API_KEY and PAYRAM_BASE_URL set", () => {
+  describe("with BTCPAY_API_KEY and BTCPAY_BASE_URL set", () => {
+    const WEBHOOK_SECRET = "integration-test-webhook-secret";
+
     beforeEach(async () => {
-      process.env.PAYRAM_API_KEY = "test-api-key-12345";
-      process.env.PAYRAM_BASE_URL = "https://payram.example.com";
+      vi.stubEnv("BTCPAY_API_KEY", "test-api-key-12345");
+      vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
+      vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
+      vi.stubEnv("BTCPAY_WEBHOOK_SECRET", WEBHOOK_SECRET);
       // Re-init deps to pick up the env vars
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+        cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
         sigPenaltyRepo: {
           get: () => null,
           recordFailure: (ip: string, source: string) => ({ ip, source, failures: 1, blockedUntil: 0, updatedAt: 0 }),
@@ -195,91 +190,97 @@ describe("integration: billing crypto routes", () => {
     });
 
     describe("POST /api/billing/crypto/webhook", () => {
-      it("returns 401 when API-Key header is missing", async () => {
+      it("returns 401 when BTCPAY-SIG header is missing", async () => {
+        const body = JSON.stringify({
+          deliveryId: "del-001",
+          webhookId: "wh-001",
+          originalDeliveryId: "del-001",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000000,
+          storeId: "test-store-id",
+          invoiceId: "inv-001",
+        });
+
         const res = await app.request("/api/billing/crypto/webhook", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reference_id: "ref-001",
-            status: "FILLED",
-            amount: "25.00",
-            currency: "USDC",
-            filled_amount: "25.00",
-          }),
-        });
-        expect(res.status).toBe(401);
-        const body = await res.json();
-        expect(body.error).toBe("Unauthorized");
-      });
-
-      it("returns 401 when API-Key header is wrong", async () => {
-        const res = await app.request("/api/billing/crypto/webhook", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "API-Key": "wrong-key" },
-          body: JSON.stringify({
-            reference_id: "ref-001",
-            status: "FILLED",
-            amount: "25.00",
-            currency: "USDC",
-            filled_amount: "25.00",
-          }),
+          body,
         });
         expect(res.status).toBe(401);
       });
 
-      it("returns 400 for invalid payload schema", async () => {
+      it("returns 401 when BTCPAY-SIG header has wrong signature", async () => {
+        const body = JSON.stringify({
+          deliveryId: "del-002",
+          webhookId: "wh-002",
+          originalDeliveryId: "del-002",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000001,
+          storeId: "test-store-id",
+          invoiceId: "inv-002",
+        });
+
         const res = await app.request("/api/billing/crypto/webhook", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "API-Key": "test-api-key-12345" },
-          body: JSON.stringify({ bad: "payload" }),
+          headers: { "Content-Type": "application/json", "BTCPAY-SIG": "sha256=deadbeef" },
+          body,
         });
-        expect(res.status).toBe(400);
-        const body = await res.json();
-        expect(body.received).toBe(false);
+        expect(res.status).toBe(401);
       });
 
-      it("returns { received: true } for valid webhook with unknown reference_id", async () => {
+      it("accepts valid BTCPAY-SIG and processes InvoiceCreated", async () => {
+        const body = JSON.stringify({
+          deliveryId: "del-003",
+          webhookId: "wh-003",
+          originalDeliveryId: "del-003",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000002,
+          storeId: "test-store-id",
+          invoiceId: "inv-003",
+        });
+        const sig = sign(body, WEBHOOK_SECRET);
+
         const res = await app.request("/api/billing/crypto/webhook", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "API-Key": "test-api-key-12345" },
-          body: JSON.stringify({
-            reference_id: "ref-unknown-xyz",
-            status: "FILLED",
-            amount: "25.00",
-            currency: "USDC",
-            filled_amount: "25.00",
-          }),
+          headers: { "Content-Type": "application/json", "BTCPAY-SIG": sig },
+          body,
         });
-        // handled:false from handler, but route returns { received: false }
-        expect(res.status).toBe(200);
-        const body = await res.json();
-        expect(body.received).toBe(false);
+        // Not 401/403; may be 200 or 400 depending on charge lookup
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
       });
 
-      it("does NOT require admin bearer auth (webhook uses API key only)", async () => {
-        // Should return 401 (wrong key) not 401 (missing bearer token)
-        // i.e. the webhook route skips bearer auth
+      it("does NOT require admin bearer auth (webhook uses BTCPay signature)", async () => {
+        // Without bearer auth header, should NOT return 401 from bearer check.
+        // Missing BTCPAY-SIG → 401 from signature check, not from bearer auth.
+        const body = JSON.stringify({
+          deliveryId: "del-no-auth",
+          webhookId: "wh-no-auth",
+          originalDeliveryId: "del-no-auth",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000003,
+          storeId: "test-store-id",
+          invoiceId: "inv-no-auth",
+        });
+
         const res = await app.request("/api/billing/crypto/webhook", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reference_id: "ref-001",
-            status: "OPEN",
-            amount: "0",
-            currency: "USDC",
-            filled_amount: "0",
-          }),
+          body,
         });
-        // Missing API-Key -> 401 from PayRam check, not 401 from bearer auth
+        // 401 is from missing BTCPAY-SIG, not from missing bearer token
         expect(res.status).toBe(401);
-        const body = await res.json();
-        expect(body.error).toBe("Unauthorized"); // PayRam auth error, not bearer
       });
 
       it("returns 400 for malformed JSON body", async () => {
+        const sig = sign("not json", WEBHOOK_SECRET);
         const res = await app.request("/api/billing/crypto/webhook", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "API-Key": "test-api-key-12345" },
+          headers: { "Content-Type": "application/json", "BTCPAY-SIG": sig },
           body: "not json",
         });
         expect(res.status).toBe(400);

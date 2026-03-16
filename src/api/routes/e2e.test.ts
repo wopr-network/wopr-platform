@@ -93,17 +93,13 @@ const fleetMock = {
   getInstance: vi.fn().mockImplementation(async (id: string) => {
     if (!createdBots.has(id)) throw new MockBotNotFoundError(id);
     return {
-      start: async () => { botRunningState.set(id, true); },
-      stop: async () => { botRunningState.set(id, false); },
+      start: vi.fn().mockImplementation(async () => {
+        botRunningState.set(id, true);
+      }),
+      stop: vi.fn().mockImplementation(async () => {
+        botRunningState.set(id, false);
+      }),
     };
-  }),
-  start: vi.fn().mockImplementation(async (id: string) => {
-    if (!createdBots.has(id)) throw new MockBotNotFoundError(id);
-    botRunningState.set(id, true);
-  }),
-  stop: vi.fn().mockImplementation(async (id: string) => {
-    if (!createdBots.has(id)) throw new MockBotNotFoundError(id);
-    botRunningState.set(id, false);
   }),
   restart: vi.fn().mockImplementation(async (id: string) => {
     if (!createdBots.has(id)) throw new MockBotNotFoundError(id);
@@ -198,8 +194,6 @@ vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
     FleetManager: class {
       create = fleetMock.create;
       getInstance = fleetMock.getInstance;
-      start = fleetMock.start;
-      stop = fleetMock.stop;
       restart = fleetMock.restart;
       remove = fleetMock.remove;
       status = fleetMock.status;
