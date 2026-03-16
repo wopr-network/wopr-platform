@@ -119,7 +119,7 @@ describe("services.ts singleton wiring", () => {
       { name: "meterAggregator", get: getMeterAggregator },
       { name: "budgetChecker", get: getBudgetChecker },
       { name: "tenantCustomerStore", get: getTenantCustomerRepository },
-      { name: "payRamChargeStore", get: getCryptoChargeRepository },
+      { name: "cryptoChargeRepo", get: getCryptoChargeRepository },
       { name: "dividendRepo", get: getDividendRepo },
       { name: "autoTopupSettingsRepo", get: getAutoTopupSettingsRepo },
       { name: "autoTopupEventLogRepo", get: getAutoTopupEventLogRepo },

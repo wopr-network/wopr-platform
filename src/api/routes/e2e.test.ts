@@ -271,6 +271,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   await endTestTransaction(_pool);
   await _pool.close();
 });
