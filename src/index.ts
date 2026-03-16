@@ -799,13 +799,13 @@ if (process.env.NODE_ENV !== "test") {
 
       if (stripeWebhookSecret) {
         // Create crypto billing deps before tRPC router so both REST and tRPC can share them.
-        const payramChargeRepo = process.env.BTCPAY_API_KEY ? new DrizzleCryptoChargeRepository(getDb()) : undefined;
-        let payramClient: import("@wopr-network/platform-core/billing").BTCPayClient | undefined;
+        const cryptoChargeRepo = process.env.BTCPAY_API_KEY ? new DrizzleCryptoChargeRepository(getDb()) : undefined;
+        let cryptoClient: import("@wopr-network/platform-core/billing").BTCPayClient | undefined;
         if (process.env.BTCPAY_API_KEY) {
           const { BTCPayClient, loadCryptoConfig } = await import("@wopr-network/platform-core/billing");
           const cryptoConfig = loadCryptoConfig();
           if (cryptoConfig) {
-            payramClient = new BTCPayClient(cryptoConfig);
+            cryptoClient = new BTCPayClient(cryptoConfig);
           }
         }
 
@@ -832,8 +832,8 @@ if (process.env.NODE_ENV !== "test") {
           spendingLimitsRepo,
           autoTopupSettingsStore,
           affiliateRepo: getAffiliateRepo(),
-          payramClient,
-          payramChargeRepo,
+          cryptoClient,
+          cryptoChargeRepo,
           auditLogger: billingAuditLogger,
         });
         logger.info("tRPC billing router initialized");
@@ -846,9 +846,9 @@ if (process.env.NODE_ENV !== "test") {
           meterAggregator,
           sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
           replayGuard: new DrizzleWebhookSeenRepository(getDb()),
-          payramReplayGuard: new DrizzleWebhookSeenRepository(getDb()),
+          cryptoReplayGuard: new DrizzleWebhookSeenRepository(getDb()),
           affiliateRepo: getAffiliateRepo(),
-          payramChargeRepo,
+          cryptoChargeRepo,
         });
         logger.info("REST billing routes initialized");
       } else {

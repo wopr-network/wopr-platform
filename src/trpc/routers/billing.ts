@@ -156,8 +156,8 @@ export interface BillingRouterDeps {
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
-  payramClient?: BTCPayClient;
-  payramChargeRepo?: ICryptoChargeRepository;
+  cryptoClient?: BTCPayClient;
+  cryptoChargeRepo?: ICryptoChargeRepository;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -285,14 +285,14 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { payramClient, payramChargeRepo } = deps();
-      if (!payramClient || !payramChargeRepo) {
+      const { cryptoClient, cryptoChargeRepo } = deps();
+      if (!cryptoClient || !cryptoChargeRepo) {
         throw new TRPCError({
           code: "NOT_IMPLEMENTED",
           message: "Crypto payments not configured",
         });
       }
-      const result = await createCryptoCheckout(payramClient, payramChargeRepo, {
+      const result = await createCryptoCheckout(cryptoClient, cryptoChargeRepo, {
         tenant,
         amountUsd: input.amountUsd,
       });

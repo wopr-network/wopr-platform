@@ -547,7 +547,7 @@ describe("E2E: Billing flow (credit model)", () => {
       sigPenaltyRepo: new DrizzleSigPenaltyRepository(_db),
       affiliateRepo: new DrizzleAffiliateRepository(_db),
       replayGuard: noOpReplayGuard,
-      payramReplayGuard: noOpReplayGuard,
+      cryptoReplayGuard: noOpReplayGuard,
     });
 
     setFleetDeps({

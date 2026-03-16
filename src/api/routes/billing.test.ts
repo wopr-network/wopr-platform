@@ -113,7 +113,7 @@ describe("billing routes", () => {
       sigPenaltyRepo,
       affiliateRepo: new DrizzleAffiliateRepository(db),
       replayGuard: noOpReplayGuard,
-      payramReplayGuard: noOpReplayGuard,
+      cryptoReplayGuard: noOpReplayGuard,
     });
   });
 
@@ -294,7 +294,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/credits/checkout", {
@@ -328,7 +328,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/portal", {
@@ -377,7 +377,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
       const res = await billingRoutes.request("/portal", {
         method: "POST",
@@ -405,7 +405,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/portal", {
@@ -446,7 +446,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -474,7 +474,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -499,7 +499,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -538,7 +538,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       // First request — should process normally
@@ -574,7 +574,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       await billingRoutes.request("/webhook", {
@@ -596,7 +596,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -621,7 +621,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       // First failure: 400 (not yet blocked)
@@ -652,7 +652,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       // Wrap billingRoutes in an app that injects socket address from XFF,
@@ -1109,9 +1109,9 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        payramChargeRepo: new DrizzleCryptoChargeRepository(db),
+        cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/crypto/checkout", {
@@ -1128,7 +1128,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       expect(res.status).toBe(400);
@@ -1175,9 +1175,9 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        payramChargeRepo: new DrizzleCryptoChargeRepository(db),
+        cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/crypto/webhook", {
@@ -1218,8 +1218,8 @@ describe("billing routes", () => {
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
-          payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
+          cryptoReplayGuard: noOpReplayGuard,
+          cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
       });
 
@@ -1232,7 +1232,7 @@ describe("billing routes", () => {
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
-          payramReplayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
         });
       });
 
@@ -1288,8 +1288,8 @@ describe("billing routes", () => {
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
-          payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
+          cryptoReplayGuard: noOpReplayGuard,
+          cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
 
         const body = JSON.stringify({
@@ -1341,8 +1341,8 @@ describe("billing routes", () => {
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
-          payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
+          cryptoReplayGuard: noOpReplayGuard,
+          cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
       });
 
@@ -1355,7 +1355,7 @@ describe("billing routes", () => {
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
-          payramReplayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
         });
       });
 
@@ -1390,7 +1390,7 @@ describe("billing routes", () => {
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
-          payramReplayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
         });
       });
 
@@ -1414,8 +1414,8 @@ describe("billing routes", () => {
           sigPenaltyRepo: penaltyRepo,
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
-          payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
+          cryptoReplayGuard: noOpReplayGuard,
+          cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {
@@ -1450,7 +1450,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       // tenant is resolved from auth context (tokenTenantId), not from request body
@@ -1508,7 +1508,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/setup-intent", {
@@ -1530,7 +1530,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       // tenant is resolved from auth context (tokenTenantId)
@@ -1557,7 +1557,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
@@ -1598,7 +1598,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
@@ -1620,7 +1620,7 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
-        payramReplayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {

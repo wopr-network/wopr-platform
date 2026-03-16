@@ -10,6 +10,7 @@ import {
   loadCryptoConfig,
   MIN_PAYMENT_USD,
   PaymentMethodOwnershipError,
+  verifyCryptoWebhookSignature,
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
@@ -27,9 +28,9 @@ export interface BillingRouteDeps {
   /** Replay guard for Stripe webhook deduplication. */
   replayGuard: IWebhookSeenRepository;
   /** Replay guard for PayRam webhook deduplication. */
-  payramReplayGuard: IWebhookSeenRepository;
+  cryptoReplayGuard: IWebhookSeenRepository;
   affiliateRepo: IAffiliateRepository;
-  payramChargeRepo?: DrizzleCryptoChargeRepository;
+  cryptoChargeRepo?: DrizzleCryptoChargeRepository;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -414,7 +415,7 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const { payramChargeRepo: chargeStore } = getDeps();
+  const { cryptoChargeRepo: chargeStore } = getDeps();
   if (!cryptoClient || !chargeStore) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
@@ -479,7 +480,6 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     return c.json({ error: "BTCPay webhook secret not configured" }, 503);
   }
 
-  const { verifyCryptoWebhookSignature } = await import("@wopr-network/platform-core/billing");
   const sigHeader = c.req.header("BTCPAY-SIG");
   const authenticated = verifyCryptoWebhookSignature(rawBody, sigHeader, webhookSecret);
 
@@ -516,7 +516,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     return c.json({ received: false }, 400);
   }
 
-  const { creditLedger, payramChargeRepo: chargeStore2, payramReplayGuard } = getDeps();
+  const { creditLedger, cryptoChargeRepo: chargeStore2, cryptoReplayGuard } = getDeps();
   if (!chargeStore2) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
@@ -524,7 +524,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     {
       chargeStore: chargeStore2,
       creditLedger,
-      replayGuard: payramReplayGuard,
+      replayGuard: cryptoReplayGuard,
     },
     parsed.data,
   );
