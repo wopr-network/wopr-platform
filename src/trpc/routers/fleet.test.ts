@@ -421,18 +421,18 @@ describe("fleet.createInstance", () => {
 // ---------------------------------------------------------------------------
 
 describe("fleet.controlInstance", () => {
-  it("calls fleet.start after verifying ownership", async () => {
+  it("calls instance.start after verifying ownership", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "start" });
     expect(result).toEqual({ ok: true });
-    expect(fleetMock.start).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
   });
 
-  it("calls fleet.stop after verifying ownership", async () => {
+  it("calls instance.stop after verifying ownership", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "stop" });
     expect(result).toEqual({ ok: true });
-    expect(fleetMock.stop).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
   });
 
   it("calls fleet.restart after verifying ownership", async () => {
