@@ -1076,8 +1076,8 @@ describe("billing routes", () => {
   // -- POST /crypto/checkout -------------------------------------------------
 
   describe("POST /crypto/checkout", () => {
-    it("returns 503 when PayRam not configured (no env vars)", async () => {
-      // By default in tests, PAYRAM_API_KEY and PAYRAM_BASE_URL are not set.
+    it("returns 503 when BTCPay not configured (no env vars)", async () => {
+      // By default in tests, BTCPAY_API_KEY and BTCPAY_BASE_URL are not set.
       const res = await billingRoutes.request("/crypto/checkout", {
         method: "POST",
         headers: { ...authHeader, "Content-Type": "application/json" },
@@ -1099,10 +1099,11 @@ describe("billing routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("returns 400 for invalid JSON body (when PayRam is configured)", async () => {
-      // Configure PayRam so that the JSON parsing path is reached
-      vi.stubEnv("PAYRAM_API_KEY", "test-key");
-      vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+    it("returns 400 for invalid JSON body (when BTCPay is configured)", async () => {
+      // Configure BTCPay so that the JSON parsing path is reached
+      vi.stubEnv("BTCPAY_API_KEY", "test-key");
+      vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
+      vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
@@ -1138,23 +1139,26 @@ describe("billing routes", () => {
   // -- POST /crypto/webhook --------------------------------------------------
 
   describe("POST /crypto/webhook", () => {
-    it("returns 503 when PayRam not configured (no env vars)", async () => {
+    it("returns 503 when BTCPay not configured (no env vars)", async () => {
       const res = await billingRoutes.request("/crypto/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reference_id: "ref-001",
-          status: "FILLED",
-          amount: "25.00",
-          currency: "USDC",
-          filled_amount: "25.00",
+          deliveryId: "del-001",
+          webhookId: "wh-001",
+          originalDeliveryId: "del-001",
+          isRedelivery: false,
+          type: "InvoiceSettled",
+          timestamp: 1700000000,
+          storeId: "store-1",
+          invoiceId: "inv-001",
         }),
       });
 
       expect(res.status).toBe(503);
     });
 
-    it("does NOT require bearer auth (uses API key header)", async () => {
+    it("does NOT require bearer auth (uses BTCPay signature)", async () => {
       // Without bearer auth, it should NOT return 401.
       // It should return 503 (not configured) or some other non-401 status.
       const res = await billingRoutes.request("/crypto/webhook", {
@@ -1166,9 +1170,10 @@ describe("billing routes", () => {
       expect(res.status).not.toBe(401);
     });
 
-    it("rejects API key with wrong length without leaking expected length", async () => {
-      vi.stubEnv("PAYRAM_API_KEY", "correct-key-value");
-      vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+    it("returns 503 when BTCPAY_WEBHOOK_SECRET is not set but BTCPay is configured", async () => {
+      vi.stubEnv("BTCPAY_API_KEY", "test-key");
+      vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
+      vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
@@ -1184,33 +1189,45 @@ describe("billing routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "API-Key": "short", // Different length than "correct-key-value"
         },
         body: JSON.stringify({
-          reference_id: "ref-001",
-          status: "FILLED",
-          amount: "10.00",
-          filled_amount: "10.00",
+          deliveryId: "del-001",
+          webhookId: "wh-001",
+          originalDeliveryId: "del-001",
+          isRedelivery: false,
+          type: "InvoiceSettled",
+          timestamp: 1700000000,
+          storeId: "store-1",
+          invoiceId: "inv-001",
         }),
       });
 
       vi.unstubAllEnvs();
+      setBillingDeps({
+        processor: createMockProcessor(),
+        creditLedger: new DrizzleLedger(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
+      });
 
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(503);
     });
 
     describe("HMAC signature verification", () => {
       const WEBHOOK_SECRET = "test-hmac-secret-hex";
-      const VALID_API_KEY = "correct-key-value";
 
       function sign(body: string, secret: string): string {
-        return crypto.createHmac("sha256", secret).update(body).digest("hex");
+        return `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
       }
 
       beforeEach(() => {
-        vi.stubEnv("PAYRAM_WEBHOOK_SECRET", WEBHOOK_SECRET);
-        vi.stubEnv("PAYRAM_API_KEY", VALID_API_KEY);
-        vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+        vi.stubEnv("BTCPAY_WEBHOOK_SECRET", WEBHOOK_SECRET);
+        vi.stubEnv("BTCPAY_API_KEY", "test-key");
+        vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
+        vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
         setBillingDeps({
           processor: createMockProcessor(),
           creditLedger: new DrizzleLedger(db),
@@ -1238,11 +1255,14 @@ describe("billing routes", () => {
 
       it("accepts request with valid HMAC signature", async () => {
         const body = JSON.stringify({
-          reference_id: "ref-hmac-1",
-          status: "OPEN",
-          amount: "100",
-          currency: "USDT",
-          filled_amount: "0",
+          deliveryId: "del-hmac-1",
+          webhookId: "wh-hmac-1",
+          originalDeliveryId: "del-hmac-1",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000001,
+          storeId: "store-1",
+          invoiceId: "inv-hmac-1",
         });
         const sig = sign(body, WEBHOOK_SECRET);
 
@@ -1250,7 +1270,7 @@ describe("billing routes", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-PayRam-Signature": sig,
+            "BTCPAY-SIG": sig,
           },
           body,
         });
@@ -1261,63 +1281,37 @@ describe("billing routes", () => {
 
       it("rejects request with invalid HMAC signature", async () => {
         const body = JSON.stringify({
-          reference_id: "ref-hmac-2",
-          status: "OPEN",
-          amount: "100",
-          currency: "USDT",
-          filled_amount: "0",
+          deliveryId: "del-hmac-2",
+          webhookId: "wh-hmac-2",
+          originalDeliveryId: "del-hmac-2",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000002,
+          storeId: "store-1",
+          invoiceId: "inv-hmac-2",
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-PayRam-Signature": "deadbeef",
+            "BTCPAY-SIG": "sha256=deadbeef",
           },
           body,
         });
         expect(res.status).toBe(401);
       });
 
-      it("falls back to API-Key when PAYRAM_WEBHOOK_SECRET is not set", async () => {
-        vi.stubEnv("PAYRAM_WEBHOOK_SECRET", "");
-        setBillingDeps({
-          processor: createMockProcessor(),
-          creditLedger: new DrizzleLedger(db),
-          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
-          sigPenaltyRepo: createTestSigPenaltyRepo(db),
-          affiliateRepo: new DrizzleAffiliateRepository(db),
-          replayGuard: noOpReplayGuard,
-          cryptoReplayGuard: noOpReplayGuard,
-          cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
-        });
-
+      it("rejects request with no BTCPAY-SIG header", async () => {
         const body = JSON.stringify({
-          reference_id: "ref-fallback",
-          status: "OPEN",
-          amount: "100",
-          currency: "USDT",
-          filled_amount: "0",
-        });
-
-        const res = await billingRoutes.request("/crypto/webhook", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "API-Key": VALID_API_KEY,
-          },
-          body,
-        });
-        expect(res.status).not.toBe(401);
-      });
-
-      it("rejects request with no signature headers at all", async () => {
-        const body = JSON.stringify({
-          reference_id: "ref-none",
-          status: "OPEN",
-          amount: "100",
-          currency: "USDT",
-          filled_amount: "0",
+          deliveryId: "del-none",
+          webhookId: "wh-none",
+          originalDeliveryId: "del-none",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000003,
+          storeId: "store-1",
+          invoiceId: "inv-none",
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {
@@ -1331,9 +1325,10 @@ describe("billing routes", () => {
 
     describe("IP allowlist", () => {
       beforeEach(() => {
-        vi.stubEnv("PAYRAM_WEBHOOK_ALLOWED_IPS", "203.0.113.5,203.0.113.6");
-        vi.stubEnv("PAYRAM_API_KEY", "correct-key-value");
-        vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+        vi.stubEnv("BTCPAY_WEBHOOK_ALLOWED_IPS", "203.0.113.5,203.0.113.6");
+        vi.stubEnv("BTCPAY_API_KEY", "test-key");
+        vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
+        vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
         setBillingDeps({
           processor: createMockProcessor(),
           creditLedger: new DrizzleLedger(db),
@@ -1361,18 +1356,20 @@ describe("billing routes", () => {
 
       it("rejects request from non-allowlisted IP", async () => {
         const body = JSON.stringify({
-          reference_id: "ref-ip",
-          status: "OPEN",
-          amount: "100",
-          currency: "USDT",
-          filled_amount: "0",
+          deliveryId: "del-ip",
+          webhookId: "wh-ip",
+          originalDeliveryId: "del-ip",
+          isRedelivery: false,
+          type: "InvoiceCreated",
+          timestamp: 1700000004,
+          storeId: "store-1",
+          invoiceId: "inv-ip",
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "API-Key": "correct-key-value",
           },
           body,
         });
@@ -1395,8 +1392,9 @@ describe("billing routes", () => {
       });
 
       it("returns 429 when IP is in penalty backoff", async () => {
-        vi.stubEnv("PAYRAM_API_KEY", "correct-key-value");
-        vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+        vi.stubEnv("BTCPAY_API_KEY", "test-key");
+        vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
+        vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
 
         // Use a real penalty repo but pre-seed a blocked entry
         const penaltyRepo = createTestSigPenaltyRepo(db);
@@ -1404,7 +1402,7 @@ describe("billing routes", () => {
         // In test requests (Hono .request()), there is no real socket and no
         // x-forwarded-for header, so getClientIpFromContext returns "unknown".
         for (let i = 0; i < 5; i++) {
-          await penaltyRepo.recordFailure("unknown", "payram");
+          await penaltyRepo.recordFailure("unknown", "crypto");
         }
 
         setBillingDeps({
@@ -1422,14 +1420,16 @@ describe("billing routes", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "API-Key": "wrong-key",
           },
           body: JSON.stringify({
-            reference_id: "x",
-            status: "OPEN",
-            amount: "1",
-            currency: "BTC",
-            filled_amount: "0",
+            deliveryId: "del-penalty",
+            webhookId: "wh-penalty",
+            originalDeliveryId: "del-penalty",
+            isRedelivery: false,
+            type: "InvoiceCreated",
+            timestamp: 1700000005,
+            storeId: "store-1",
+            invoiceId: "inv-penalty",
           }),
         });
         expect(res.status).toBe(429);
@@ -1877,7 +1877,7 @@ describe("billing routes", () => {
           amountUsd: 10,
         }),
       });
-      // Not 403 — may be 503 (payram not configured in tests) but not IDOR
+      // Not 403 — may be 503 (BTCPay not configured in tests) but not IDOR
       expect(res.status).not.toBe(403);
     });
   });

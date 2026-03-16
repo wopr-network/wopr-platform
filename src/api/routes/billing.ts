@@ -1,7 +1,7 @@
 import { getClientIpFromContext } from "@wopr-network/platform-core/api/middleware/get-client-ip";
 import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-penalty-repository";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
-import type { DrizzleCryptoChargeRepository, IWebhookSeenRepository } from "@wopr-network/platform-core/billing";
+import type { ICryptoChargeRepository, IWebhookSeenRepository } from "@wopr-network/platform-core/billing";
 import {
   BTCPayClient,
   createCryptoCheckout,
@@ -27,10 +27,10 @@ export interface BillingRouteDeps {
   sigPenaltyRepo: ISigPenaltyRepository;
   /** Replay guard for Stripe webhook deduplication. */
   replayGuard: IWebhookSeenRepository;
-  /** Replay guard for PayRam webhook deduplication. */
+  /** Replay guard for BTCPay webhook deduplication. */
   cryptoReplayGuard: IWebhookSeenRepository;
   affiliateRepo: IAffiliateRepository;
-  cryptoChargeRepo?: DrizzleCryptoChargeRepository;
+  cryptoChargeRepo?: ICryptoChargeRepository;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -130,7 +130,7 @@ function getDeps(): BillingRouteDeps {
 
 // BOUNDARY(WOP-805): REST is the correct layer for billing routes.
 // - /billing/webhook: Stripe signature verification (raw HTTP, not tRPC)
-// - /billing/crypto/*: PayRam webhook + checkout (external service signatures)
+// - /billing/crypto/*: BTCPay webhook + checkout (external service signatures)
 // - /billing/setup-intent: returns Stripe.js clientSecret (REST is simpler)
 // - /billing/payment-methods/:id: Stripe detach (REST for now)
 // - /billing/credits/checkout and /billing/portal: have tRPC mirrors;
@@ -393,7 +393,7 @@ billingRoutes.post("/webhook", async (c) => {
 /**
  * POST /billing/crypto/checkout
  *
- * Create a PayRam payment session for a one-time crypto credit purchase.
+ * Create a BTCPay payment session for a one-time crypto credit purchase.
  * Body: { tenant, amountUsd }
  */
 billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
