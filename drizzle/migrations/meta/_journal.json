@@ -169,6 +169,13 @@
       "when": 1773387605000,
       "tag": "0074_archived_journal_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1773697402606,
+      "tag": "0075_loving_quasar",
+      "breakpoints": true
     }
   ]
 }
