@@ -5,7 +5,7 @@
  * middleware chains (bearer auth) but mocked Docker/FleetManager.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTH_HEADER, JSON_HEADERS, TENANT_A_TOKEN, TENANT_B_TOKEN, fleetMock, pollerMock, updaterMock } from "./setup.js";
+import { AUTH_HEADER, JSON_HEADERS, TENANT_A_TOKEN, TENANT_B_TOKEN, fleetMock, mockFleetInstance, pollerMock, updaterMock } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
 
@@ -25,6 +25,10 @@ describe("integration: fleet routes", () => {
       }
       return Promise.resolve(null);
     });
+    // Reset getInstance and instance mocks so tests don't bleed into each other
+    fleetMock.getInstance.mockResolvedValue(mockFleetInstance);
+    mockFleetInstance.start.mockResolvedValue(undefined);
+    mockFleetInstance.stop.mockResolvedValue(undefined);
   });
 
   // -- Authentication (middleware chain) ------------------------------------
@@ -315,7 +319,7 @@ describe("integration: fleet routes", () => {
 
   describe("lifecycle actions (start/stop/restart)", () => {
     it("POST /fleet/bots/:id/start starts a bot", async () => {
-      fleetMock.start.mockResolvedValue(undefined);
+      mockFleetInstance.start.mockResolvedValue(undefined);
 
       const res = await app.request(`/fleet/bots/${BOT_1}/start`, {
         method: "POST",
@@ -327,7 +331,7 @@ describe("integration: fleet routes", () => {
     });
 
     it("POST /fleet/bots/:id/stop stops a bot", async () => {
-      fleetMock.stop.mockResolvedValue(undefined);
+      mockFleetInstance.stop.mockResolvedValue(undefined);
 
       const res = await app.request(`/fleet/bots/${BOT_1}/stop`, {
         method: "POST",
@@ -347,9 +351,8 @@ describe("integration: fleet routes", () => {
     });
 
     it("returns 404 when starting non-existent bot", async () => {
-      const { BotNotFoundError } = await import("@wopr-network/platform-core/fleet/fleet-manager");
-      fleetMock.start.mockRejectedValue(new BotNotFoundError(MISSING_BOT));
-
+      // profiles.get returns null for MISSING_BOT (set in beforeEach),
+      // so validateTenantOwnership returns 404 before getInstance is called.
       const res = await app.request(`/fleet/bots/${MISSING_BOT}/start`, {
         method: "POST",
         headers: AUTH_HEADER,

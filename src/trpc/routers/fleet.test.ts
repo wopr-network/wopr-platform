@@ -113,13 +113,18 @@ const mockTemplates: ProfileTemplate[] = [
 // ---------------------------------------------------------------------------
 
 function createFleetMock() {
+  const mockInstance = {
+    id: TEST_BOT_ID,
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+  };
   return {
+    mockInstance,
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
     create: vi.fn().mockResolvedValue(mockProfile),
     update: vi.fn().mockResolvedValue(mockProfile),
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
+    getInstance: vi.fn().mockResolvedValue(mockInstance),
     restart: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     logs: vi.fn().mockResolvedValue(`${TEST_TIMESTAMP} log line 1\n`),
@@ -167,6 +172,8 @@ beforeAll(() => {
     deleteInvite: async () => {},
     deleteAllMembers: async () => {},
     deleteAllInvites: async () => {},
+    listOrgsByUser: async () => [],
+    markInviteAccepted: async () => {},
   });
 });
 
@@ -415,18 +422,22 @@ describe("fleet.createInstance", () => {
 // ---------------------------------------------------------------------------
 
 describe("fleet.controlInstance", () => {
-  it("calls fleet.start after verifying ownership", async () => {
+  it("calls instance.start after verifying ownership", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "start" });
     expect(result).toEqual({ ok: true });
-    expect(fleetMock.start).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.mockInstance.start).toHaveBeenCalled();
+    expect(fleetMock.mockInstance.stop).not.toHaveBeenCalled();
   });
 
-  it("calls fleet.stop after verifying ownership", async () => {
+  it("calls instance.stop after verifying ownership", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "stop" });
     expect(result).toEqual({ ok: true });
-    expect(fleetMock.stop).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.mockInstance.stop).toHaveBeenCalled();
+    expect(fleetMock.mockInstance.start).not.toHaveBeenCalled();
   });
 
   it("calls fleet.restart after verifying ownership", async () => {

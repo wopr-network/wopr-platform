@@ -40,7 +40,7 @@ describe("DrizzleWebhookSeenRepository", () => {
 
   it("isolates by source", async () => {
     await repo.markSeen("evt_123", "stripe");
-    expect(await repo.isDuplicate("evt_123", "payram")).toBe(false);
+    expect(await repo.isDuplicate("evt_123", "crypto")).toBe(false);
   });
 
   it("onConflictDoNothing — markSeen twice is idempotent", async () => {

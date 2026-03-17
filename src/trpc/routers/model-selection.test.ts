@@ -55,6 +55,8 @@ describe("tRPC model selection router", () => {
       deleteInvite: async () => {},
       deleteAllMembers: async () => {},
       deleteAllInvites: async () => {},
+      listOrgsByUser: async () => [],
+      markInviteAccepted: async () => {},
     });
   });
 

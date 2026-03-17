@@ -37,8 +37,8 @@ async function seedTenant(pool: PGlite, tenantId: string): Promise<void> {
     VALUES ('an-${tenantId}', '${tenantId}', 'admin', 'Test note');
     INSERT INTO snapshots (id, tenant, instance_id, user_id, trigger, storage_path)
     VALUES ('snap-${tenantId}', '${tenantId}', 'inst-1', '${tenantId}', 'manual', '/data/snap');
-    INSERT INTO payram_charges (reference_id, tenant_id, amount_usd_cents)
-    VALUES ('pc-${tenantId}', '${tenantId}', 500);
+    INSERT INTO crypto_charges (reference_id, tenant_id, amount_usd_cents)
+    VALUES ('cc-${tenantId}', '${tenantId}', 500);
     INSERT INTO tenant_status (tenant_id)
     VALUES ('${tenantId}');
     INSERT INTO user_roles (user_id, tenant_id, role, granted_at)
@@ -108,7 +108,7 @@ describe("executeDeletion", () => {
       expect(await countRows(pool, "audit_log", "user_id", tenantId)).toBe(0);
       expect(await countRows(pool, "admin_notes", "tenant_id", tenantId)).toBe(0);
       expect(await countRows(pool, "snapshots", "tenant", tenantId)).toBe(0);
-      expect(await countRows(pool, "payram_charges", "tenant_id", tenantId)).toBe(0);
+      expect(await countRows(pool, "crypto_charges", "tenant_id", tenantId)).toBe(0);
       expect(await countRows(pool, "tenant_status", "tenant_id", tenantId)).toBe(0);
       expect(await countRows(pool, "tenant_customers", "tenant", tenantId)).toBe(0);
       // Ledger: entries archived to de-identified table, live records deleted

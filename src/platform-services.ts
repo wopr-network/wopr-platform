@@ -118,14 +118,14 @@ export function getTenantCustomerRepository(): ITenantCustomerRepository {
   return _tenantCustomerRepo;
 }
 
-import type { IPayRamChargeRepository } from "@wopr-network/platform-core/billing";
-import { DrizzlePayRamChargeRepository } from "@wopr-network/platform-core/billing";
+import type { ICryptoChargeRepository } from "@wopr-network/platform-core/billing";
+import { DrizzleCryptoChargeRepository } from "@wopr-network/platform-core/billing";
 
-let _payramChargeRepo: IPayRamChargeRepository | null = null;
+let _cryptoChargeRepo: ICryptoChargeRepository | null = null;
 
-export function getPayRamChargeRepository(): IPayRamChargeRepository {
-  if (!_payramChargeRepo) _payramChargeRepo = new DrizzlePayRamChargeRepository(db());
-  return _payramChargeRepo;
+export function getCryptoChargeRepository(): ICryptoChargeRepository {
+  if (!_cryptoChargeRepo) _cryptoChargeRepo = new DrizzleCryptoChargeRepository(db());
+  return _cryptoChargeRepo;
 }
 
 import type { IBudgetChecker } from "@wopr-network/platform-core/monetization/budget/budget-checker";
@@ -280,10 +280,10 @@ export function getExportRepo(): IExportRepository {
 // Tenancy / Org
 // ---------------------------------------------------------------------------
 
-import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
-import { DrizzleOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
 import type { IOrgMembershipRepository } from "@wopr-network/platform-core/fleet/org-membership-repository";
 import { DrizzleOrgMembershipRepository } from "@wopr-network/platform-core/fleet/org-membership-repository";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
+import { DrizzleOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import type { IOrgRepository } from "./org/drizzle-org-repository.js";
 import { DrizzleOrgRepository } from "./org/drizzle-org-repository.js";
 import { OrgService } from "./org/org-service.js";
@@ -423,7 +423,7 @@ export function _resetPlatformForTest(): void {
   _meterEmitter = null;
   _meterAggregator = null;
   _tenantCustomerRepo = null;
-  _payramChargeRepo = null;
+  _cryptoChargeRepo = null;
   _budgetChecker = null;
   _notificationQueueStore = null;
   _notificationPrefsStore = null;

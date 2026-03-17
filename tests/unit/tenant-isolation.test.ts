@@ -86,10 +86,14 @@ const BOT_B_ID = "bbbbbbbb-0000-4000-8000-000000000002";
 // Fleet mock — shared across all fleet tests
 // ---------------------------------------------------------------------------
 
+const mockFleetInstance = {
+  start: vi.fn().mockResolvedValue(undefined),
+  stop: vi.fn().mockResolvedValue(undefined),
+};
+
 const fleetMock = {
   create: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
+  getInstance: vi.fn().mockResolvedValue(mockFleetInstance),
   restart: vi.fn(),
   remove: vi.fn(),
   status: vi.fn(),
@@ -125,8 +129,7 @@ vi.mock("@wopr-network/platform-core/fleet/profile-store", () => ({
 vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => ({
   FleetManager: class {
     create = fleetMock.create;
-    start = fleetMock.start;
-    stop = fleetMock.stop;
+    getInstance = fleetMock.getInstance;
     restart = fleetMock.restart;
     remove = fleetMock.remove;
     status = fleetMock.status;
@@ -341,8 +344,6 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
   });
 
   it("org A can start org A's own bot via POST /fleet/bots/:id/start", async () => {
-    fleetMock.start.mockResolvedValue(undefined);
-
     const res = await fleetApp.request(`/fleet/bots/${BOT_A_ID}/start`, {
       method: "POST",
       headers: authA,

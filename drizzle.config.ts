@@ -57,7 +57,7 @@ export default defineConfig({
     `${S}/oauth-states.js`,
     `${S}/org-memberships.js`,
     `${S}/organization-members.js`,
-    `${S}/payram.js`,
+    `${S}/crypto.js`,
     `${S}/plugin-marketplace-content.js`,
     `${S}/provider-credentials.js`,
     `${S}/provider-health-overrides.js`,

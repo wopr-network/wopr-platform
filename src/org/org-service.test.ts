@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { TRPCError } from "@trpc/server";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
-import { DrizzleOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
+import { DrizzleOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleOrgRepository } from "./drizzle-org-repository.js";
@@ -382,6 +382,8 @@ describe("OrgService", () => {
         token: "tok-d3",
         expiresAt: Date.now() + 86400000,
         createdAt: Date.now(),
+        acceptedAt: null,
+        revokedAt: null,
       });
 
       await svc.deleteOrg(org.id, owner);

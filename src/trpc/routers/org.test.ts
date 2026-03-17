@@ -1,5 +1,5 @@
 import type { IAuthUserRepository, LinkedAccount } from "@wopr-network/platform-core/db/auth-user-repository";
-import type { IOrgMemberRepository, OrgMemberRow } from "@wopr-network/platform-core/fleet/org-member-repository";
+import type { IOrgMemberRepository, OrgMemberRow } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,6 +62,8 @@ function makeMockOrgService(): OrgService {
       token: "tok",
       expiresAt: Date.now() + 86400000,
       createdAt: Date.now(),
+      acceptedAt: null,
+      revokedAt: null,
     }),
     revokeInvite: vi.fn(),
     changeRole: vi.fn(),
@@ -94,6 +96,8 @@ function makeMockOrgMemberRepo(): IOrgMemberRepository {
     deleteInvite: vi.fn(),
     deleteAllMembers: vi.fn(),
     deleteAllInvites: vi.fn(),
+    listOrgsByUser: vi.fn().mockResolvedValue([]),
+    markInviteAccepted: vi.fn().mockResolvedValue(undefined),
   } as IOrgMemberRepository;
 }
 
@@ -211,6 +215,8 @@ describe("tRPC org router", () => {
         token: "tok2",
         expiresAt: Date.now() + 86400000,
         createdAt: Date.now(),
+        acceptedAt: null,
+        revokedAt: null,
       });
       const caller = createCaller(authedContext());
       const result = await caller.org.inviteMember({ orgId: "org-1", email: "admin@example.com", role: "admin" });

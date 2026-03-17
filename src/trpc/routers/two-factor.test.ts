@@ -8,11 +8,11 @@
  * unknown fields). The router always uses ctx.tenantId from the bearer token.
  */
 
-import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
 import type {
   ITwoFactorRepository,
   TenantMandateStatus,
 } from "@wopr-network/platform-core/security/two-factor-repository";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +45,8 @@ const stubOrgMemberRepo: IOrgMemberRepository = {
   deleteInvite: async () => {},
   deleteAllMembers: async () => {},
   deleteAllInvites: async () => {},
+  listOrgsByUser: async () => [],
+  markInviteAccepted: async () => {},
 };
 
 // ---------------------------------------------------------------------------

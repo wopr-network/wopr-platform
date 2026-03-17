@@ -1,25 +1,21 @@
-import crypto from "node:crypto";
 import { getClientIpFromContext } from "@wopr-network/platform-core/api/middleware/get-client-ip";
 import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-penalty-repository";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
-import type {
-  DrizzlePayRamChargeRepository,
-  IWebhookSeenRepository,
-  PayRamWebhookPayload,
-} from "@wopr-network/platform-core/billing";
+import type { ICryptoChargeRepository, IWebhookSeenRepository } from "@wopr-network/platform-core/billing";
 import {
-  createPayRamCheckout,
-  createPayRamClient,
+  BTCPayClient,
+  createCryptoCheckout,
+  handleCryptoWebhook,
   type IPaymentProcessor,
-  loadPayRamConfig,
+  loadCryptoConfig,
   MIN_PAYMENT_USD,
   PaymentMethodOwnershipError,
+  verifyCryptoWebhookSignature,
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
 import type { IAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
-import { handlePayRamWebhook } from "@wopr-network/platform-core/monetization/payram/webhook";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -31,10 +27,10 @@ export interface BillingRouteDeps {
   sigPenaltyRepo: ISigPenaltyRepository;
   /** Replay guard for Stripe webhook deduplication. */
   replayGuard: IWebhookSeenRepository;
-  /** Replay guard for PayRam webhook deduplication. */
-  payramReplayGuard: IWebhookSeenRepository;
+  /** Replay guard for BTCPay webhook deduplication. */
+  cryptoReplayGuard: IWebhookSeenRepository;
   affiliateRepo: IAffiliateRepository;
-  payramChargeRepo?: DrizzlePayRamChargeRepository;
+  cryptoChargeRepo?: ICryptoChargeRepository;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -91,31 +87,37 @@ const cryptoCheckoutBodySchema = z.object({
   amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
 });
 
-const payramWebhookBodySchema = z.object({
-  reference_id: z.string().min(1).max(256),
-  invoice_id: z.string().optional(),
-  status: z.enum(["OPEN", "VERIFYING", "FILLED", "OVER_FILLED", "PARTIALLY_FILLED", "CANCELLED"]),
-  amount: z.string(),
-  currency: z.string(),
-  filled_amount: z.string(),
+const cryptoWebhookBodySchema = z.object({
+  deliveryId: z.string().min(1),
+  webhookId: z.string().min(1),
+  originalDeliveryId: z.string().min(1),
+  isRedelivery: z.boolean(),
+  type: z.string().min(1),
+  timestamp: z.number(),
+  storeId: z.string().min(1),
+  invoiceId: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  manuallyMarked: z.boolean().optional(),
+  overPaid: z.boolean().optional(),
+  partiallyPaid: z.boolean().optional(),
 });
 
 // -- Route factory ------------------------------------------------------------
 
 let _deps: BillingRouteDeps | null = null;
 
-let payramClient: import("payram").Payram | null = null;
+let cryptoClient: BTCPayClient | null = null;
 
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
   _deps = d;
 
-  // PayRam initialization (optional — only if env vars are set)
-  const payramConfig = loadPayRamConfig();
-  if (payramConfig) {
-    payramClient = createPayRamClient(payramConfig);
+  // Crypto initialization (optional — only if env vars are set)
+  const cryptoConfig = loadCryptoConfig();
+  if (cryptoConfig) {
+    cryptoClient = new BTCPayClient(cryptoConfig);
   } else {
-    payramClient = null;
+    cryptoClient = null;
   }
 }
 
@@ -128,7 +130,7 @@ function getDeps(): BillingRouteDeps {
 
 // BOUNDARY(WOP-805): REST is the correct layer for billing routes.
 // - /billing/webhook: Stripe signature verification (raw HTTP, not tRPC)
-// - /billing/crypto/*: PayRam webhook + checkout (external service signatures)
+// - /billing/crypto/*: BTCPay webhook + checkout (external service signatures)
 // - /billing/setup-intent: returns Stripe.js clientSecret (REST is simpler)
 // - /billing/payment-methods/:id: Stripe detach (REST for now)
 // - /billing/credits/checkout and /billing/portal: have tRPC mirrors;
@@ -391,7 +393,7 @@ billingRoutes.post("/webhook", async (c) => {
 /**
  * POST /billing/crypto/checkout
  *
- * Create a PayRam payment session for a one-time crypto credit purchase.
+ * Create a BTCPay payment session for a one-time crypto credit purchase.
  * Body: { tenant, amountUsd }
  */
 billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
@@ -413,13 +415,13 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const { payramChargeRepo: chargeStore } = getDeps();
-  if (!payramClient || !chargeStore) {
+  const { cryptoChargeRepo: chargeStore } = getDeps();
+  if (!cryptoClient || !chargeStore) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
 
   try {
-    const result = await createPayRamCheckout(payramClient, chargeStore, parsed.data);
+    const result = await createCryptoCheckout(cryptoClient, chargeStore, parsed.data);
     return c.json({ url: result.url, referenceId: result.referenceId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
@@ -430,13 +432,13 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
 /**
  * POST /billing/crypto/webhook
  *
- * PayRam webhook endpoint. Verifies authenticity via HMAC-SHA256 over the
- * request body (preferred) or API-Key header (deprecated fallback).
+ * BTCPay Server webhook endpoint. Verifies HMAC-SHA256 signature via BTCPAY-SIG header.
  * Also supports IP allowlisting and sig-penalty exponential backoff.
- * Note: No bearer auth — webhook uses PayRam signature verification.
+ * Note: No bearer auth — webhook uses BTCPay signature verification.
  */
 billingRoutes.post("/crypto/webhook", async (c) => {
-  if (!payramClient) {
+  const { sigPenaltyRepo, creditLedger, cryptoChargeRepo: chargeStore, cryptoReplayGuard } = getDeps();
+  if (!chargeStore) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
 
@@ -444,8 +446,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   const now = Date.now();
 
   // ── Sig-penalty backoff (mirrors Stripe handler, WOP-477) ──
-  const { sigPenaltyRepo } = getDeps();
-  const penalty = await sigPenaltyRepo.get(ip, "payram");
+  const penalty = await sigPenaltyRepo.get(ip, "crypto");
   if (penalty && now < penalty.blockedUntil) {
     const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
     c.header("Retry-After", String(retryAfterSec));
@@ -453,21 +454,19 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   }
 
   // ── IP allowlist (optional) ──
-  const allowedIps = process.env.PAYRAM_WEBHOOK_ALLOWED_IPS;
+  const allowedIps = process.env.BTCPAY_WEBHOOK_ALLOWED_IPS;
   if (allowedIps) {
     const allowed = allowedIps
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
     if (allowed.length === 0) {
-      // Env var was set but produced no valid IPs — treat as misconfiguration
-      logger.error("PayRam webhook rejected: PAYRAM_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
+      logger.error("BTCPay webhook rejected: BTCPAY_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
       return c.json({ error: "Forbidden" }, 403);
     }
-    // Normalize IPv6-mapped IPv4 (e.g. ::ffff:1.2.3.4 → 1.2.3.4)
     const normalizedIp = ip.replace(/^::ffff:/, "");
     if (!allowed.includes(normalizedIp)) {
-      logger.error("PayRam webhook rejected: IP not in allowlist", { ip });
+      logger.error("BTCPay webhook rejected: IP not in allowlist", { ip });
       return c.json({ error: "Forbidden" }, 403);
     }
   }
@@ -475,67 +474,28 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   // ── Read raw body (must happen before JSON parse) ──
   const rawBody = await c.req.text();
 
-  // ── Authentication: HMAC-SHA256 preferred, API-Key fallback ──
-  const webhookSecret = process.env.PAYRAM_WEBHOOK_SECRET;
-  const payramApiKey = process.env.PAYRAM_API_KEY;
-
-  if (!webhookSecret && !payramApiKey) {
-    return c.json({ error: "PayRam not configured" }, 503);
+  // ── Authentication: HMAC-SHA256 via BTCPAY-SIG header ──
+  const webhookSecret = process.env.BTCPAY_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    return c.json({ error: "BTCPay webhook secret not configured" }, 503);
   }
 
-  let authenticated = false;
-
-  if (webhookSecret) {
-    // Prefer HMAC-SHA256 signature verification
-    const incomingSig = c.req.header("X-PayRam-Signature");
-    if (!incomingSig) {
-      // Secret configured but no signature header — reject immediately, do not fall through
-      try {
-        await sigPenaltyRepo.recordFailure(ip, "payram");
-      } catch (err) {
-        logger.warn("Failed to record sig penalty", { ip, err });
-      }
-      logger.error("PayRam webhook rejected: HMAC configured but X-PayRam-Signature header absent", { ip });
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    try {
-      const expectedBuf = crypto.createHmac("sha256", webhookSecret).update(rawBody).digest();
-      const incomingBuf = Buffer.from(incomingSig, "hex");
-      if (incomingBuf.length === expectedBuf.length) {
-        authenticated = crypto.timingSafeEqual(incomingBuf, expectedBuf);
-      }
-      // if lengths differ, authenticated stays false (avoids timingSafeEqual throwing)
-    } catch {
-      authenticated = false;
-    }
-  } else if (payramApiKey) {
-    // Fallback: legacy API-Key header (deprecation path) — only when HMAC not configured
-    const incomingKey = c.req.header("API-Key");
-    if (incomingKey) {
-      try {
-        authenticated = crypto.timingSafeEqual(Buffer.from(incomingKey), Buffer.from(payramApiKey));
-      } catch {
-        authenticated = false;
-      }
-      if (authenticated) {
-        logger.warn("PayRam webhook authenticated via deprecated API-Key header — migrate to HMAC signature");
-      }
-    }
-  }
+  const sigHeader = c.req.header("BTCPAY-SIG");
+  const authenticated = verifyCryptoWebhookSignature(rawBody, sigHeader, webhookSecret);
 
   if (!authenticated) {
     try {
-      await sigPenaltyRepo.recordFailure(ip, "payram");
+      await sigPenaltyRepo.recordFailure(ip, "crypto");
     } catch (err) {
       logger.warn("Failed to record sig penalty", { ip, err });
     }
-    logger.error("PayRam webhook signature verification failed", { ip });
+    logger.error("BTCPay webhook signature verification failed", { ip });
     return c.json({ error: "Unauthorized" }, 401);
   }
 
   // Clear stale penalties on successful auth
   try {
-    await sigPenaltyRepo.clear(ip, "payram");
+    await sigPenaltyRepo.clear(ip, "crypto");
   } catch (err) {
     logger.warn("Failed to clear sig penalty", { ip, err });
   }
@@ -548,36 +508,33 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     return c.json({ received: false }, 400);
   }
 
-  const parsed = payramWebhookBodySchema.safeParse(body);
+  const parsed = cryptoWebhookBodySchema.safeParse(body);
   if (!parsed.success) {
-    logger.error("PayRam webhook payload validation failed", {
+    logger.error("BTCPay webhook payload validation failed", {
       errors: parsed.error.flatten().fieldErrors,
     });
     return c.json({ received: false }, 400);
   }
 
-  const { creditLedger, payramChargeRepo: chargeStore2, payramReplayGuard } = getDeps();
-  if (!chargeStore2) {
-    return c.json({ error: "Crypto payments not configured" }, 503);
-  }
-  const result = await handlePayRamWebhook(
+  const result = await handleCryptoWebhook(
     {
-      chargeStore: chargeStore2,
+      chargeStore,
       creditLedger,
-      replayGuard: payramReplayGuard,
+      replayGuard: cryptoReplayGuard,
     },
-    parsed.data as PayRamWebhookPayload,
+    parsed.data,
   );
 
   if (result.duplicate) {
-    logger.warn("PayRam webhook replay attempt detected", {
-      referenceId: parsed.data.reference_id,
-      status: parsed.data.status,
+    logger.warn("BTCPay webhook replay attempt detected", {
+      invoiceId: parsed.data.invoiceId,
+      type: parsed.data.type,
     });
   }
 
-  // PayRam expects { received: true } as acknowledgement.
-  return c.json({ received: result.handled }, 200);
+  // Transport-level ACK is always affirmative once auth + payload validation pass.
+  // Include handling state separately so callers can distinguish business outcomes.
+  return c.json({ received: true, handled: result.handled }, 200);
 });
 
 /**

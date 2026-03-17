@@ -90,13 +90,16 @@ const fleetMock = {
     botRunningState.set(profile.id, false);
     return profile;
   }),
-  start: vi.fn().mockImplementation(async (id: string) => {
+  getInstance: vi.fn().mockImplementation(async (id: string) => {
     if (!createdBots.has(id)) throw new MockBotNotFoundError(id);
-    botRunningState.set(id, true);
-  }),
-  stop: vi.fn().mockImplementation(async (id: string) => {
-    if (!createdBots.has(id)) throw new MockBotNotFoundError(id);
-    botRunningState.set(id, false);
+    return {
+      start: vi.fn().mockImplementation(async () => {
+        botRunningState.set(id, true);
+      }),
+      stop: vi.fn().mockImplementation(async () => {
+        botRunningState.set(id, false);
+      }),
+    };
   }),
   restart: vi.fn().mockImplementation(async (id: string) => {
     if (!createdBots.has(id)) throw new MockBotNotFoundError(id);
@@ -190,8 +193,7 @@ vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
   return {
     FleetManager: class {
       create = fleetMock.create;
-      start = fleetMock.start;
-      stop = fleetMock.stop;
+      getInstance = fleetMock.getInstance;
       restart = fleetMock.restart;
       remove = fleetMock.remove;
       status = fleetMock.status;
@@ -271,6 +273,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   await endTestTransaction(_pool);
   await _pool.close();
 });
@@ -547,7 +550,7 @@ describe("E2E: Billing flow (credit model)", () => {
       sigPenaltyRepo: new DrizzleSigPenaltyRepository(_db),
       affiliateRepo: new DrizzleAffiliateRepository(_db),
       replayGuard: noOpReplayGuard,
-      payramReplayGuard: noOpReplayGuard,
+      cryptoReplayGuard: noOpReplayGuard,
     });
 
     setFleetDeps({
