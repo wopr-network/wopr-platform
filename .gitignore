@@ -8,3 +8,4 @@ test-results/
 .env
 .env.local
 .env.staging
+package-lock.json
