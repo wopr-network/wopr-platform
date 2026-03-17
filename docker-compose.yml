@@ -80,6 +80,7 @@ services:
       - STRIPE_CREDIT_PRICE_50=${STRIPE_CREDIT_PRICE_50}
       - STRIPE_CREDIT_PRICE_100=${STRIPE_CREDIT_PRICE_100}
       - DO_API_TOKEN=${DO_API_TOKEN}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - NODE_ENV=production
       - SHARED_NODE_MODULES_VOLUME=wopr-shared-node-modules
     healthcheck:
