@@ -106,6 +106,8 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("PLATFORM_UI_URL", "https://app.example.com");
     vi.stubEnv("PLATFORM_URL", "https://api.example.com");
     vi.stubEnv("PLATFORM_DOMAIN", "example.com");
+    vi.stubEnv("COOKIE_DOMAIN", ".example.com");
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     expect(() => validateRequiredEnvVars()).not.toThrow();
     expect(warnSpy).not.toHaveBeenCalled();
