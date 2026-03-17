@@ -308,7 +308,11 @@ app.route("/fleet", botPluginRoutes);
 }
 app.route("/api/quota", quotaRoutes);
 app.route("/api/billing", billingRoutes);
-app.route("/api", secretsRoutes);
+// Secrets routes handle /instances/:id/config/secrets and /validate-key.
+// Mount at specific paths — NOT /api — to prevent the bearer-token-only
+// middleware (scopedBearerAuthWithTenant) from intercepting all /api/* routes.
+app.route("/api/instances", secretsRoutes);
+app.route("/api/validate-key", secretsRoutes);
 // Secret audit routes (WOP-1975) — session-authed for dashboard UI
 // GET /api/secrets/:id/audit returns paginated access events for a credential.
 // Separate from secretsRoutes (bearer-token-scoped) because the dashboard UI
