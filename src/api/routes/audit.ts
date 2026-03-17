@@ -118,10 +118,7 @@ auditRoutes.get("/", (c) => {
   return handleUserAudit(c, getAuditRepo());
 });
 
-/** Pre-built admin audit routes with lazy DB initialization. */
+/** Pre-built admin audit routes with lazy DB initialization.
+ * Auth is enforced by scopedBearerAuthWithTenant middleware in app.ts. */
 export const adminAuditRoutes = new Hono<AuditEnv>();
-adminAuditRoutes.get("/", (c) => {
-  const user = c.get("user");
-  if (!user) return c.json({ error: "Unauthorized" }, 401);
-  return handleAdminAudit(c, getAuditRepo());
-});
+adminAuditRoutes.get("/", (c) => handleAdminAudit(c, getAuditRepo()));
