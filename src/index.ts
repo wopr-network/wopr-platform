@@ -928,12 +928,25 @@ if (process.env.NODE_ENV !== "test") {
   // SOC 2 H7: Ensure backup verifier singleton is available for admin-triggered verification
   getBackupVerifier();
 
-  // Run better-auth migrations before accepting requests.
-  // better-auth does not auto-migrate — runMigrations() must be called explicitly.
+  // Initialize BetterAuth (sessions, signup, login).
+  // Must be called before getEmailVerifier() or runAuthMigrations().
   {
-    const { runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
+    const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
+    initBetterAuth({
+      pool: getPool(),
+      db: getDb(),
+      onUserCreated: async (userId) => {
+        try {
+          const { grantSignupCredits } = await import("@wopr-network/platform-core/credits");
+          const granted = await grantSignupCredits(getCreditLedger(), userId);
+          if (granted) logger.info(`Granted $5 welcome credits to user ${userId}`);
+        } catch (err) {
+          logger.error("Failed to grant signup credits:", err);
+        }
+      },
+    });
     await runAuthMigrations();
-    logger.info("better-auth migrations applied");
+    logger.info("better-auth initialized and migrations applied");
   }
 
   // Runtime deduction scheduler — charges tenants for active bots + resource tier surcharges.
