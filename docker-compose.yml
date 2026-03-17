@@ -83,6 +83,7 @@ services:
       - DO_API_TOKEN=${DO_API_TOKEN}
       - NODE_ENV=production
       - SHARED_NODE_MODULES_VOLUME=wopr-shared-node-modules
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
       interval: 30s
@@ -92,6 +93,9 @@ services:
 
   platform-ui:
     image: ghcr.io/wopr-network/wopr-platform-ui:latest
+    depends_on:
+      platform-api:
+        condition: service_healthy
     environment:
       - NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
       - INTERNAL_API_URL=http://platform-api:3100
