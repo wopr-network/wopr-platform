@@ -1,50 +1,64 @@
 # ---------------------------------------------------------------------------
+# Global build arguments
+# ---------------------------------------------------------------------------
+ARG PNPM_VERSION=10.31.0
+
+# ---------------------------------------------------------------------------
 # Stage 1: Install production dependencies
 # ---------------------------------------------------------------------------
-FROM node:25-alpine AS deps
+FROM node:24-bookworm-slim AS deps
 
-# better-sqlite3 requires native compilation toolchain on Alpine
-RUN apk add --no-cache python3 make g++
+ARG PNPM_VERSION
+
+# Install pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod
 
 # ---------------------------------------------------------------------------
 # Stage 2: Build TypeScript
 # ---------------------------------------------------------------------------
-FROM node:25-alpine AS build
+FROM node:24-bookworm-slim AS build
+
+ARG PNPM_VERSION
+
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
 # Full node_modules (including devDeps) needed for tsc
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
 COPY src/ ./src/
-RUN npm run build
+RUN pnpm build
 
 # ---------------------------------------------------------------------------
 # Stage 3: Runtime
 # ---------------------------------------------------------------------------
-FROM node:25-alpine AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 # curl for HEALTHCHECK
-RUN apk add --no-cache curl
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN addgroup -S wopr && adduser -S wopr -G wopr
+# DOCKER_GID should match the host docker group GID (e.g. pass --build-arg DOCKER_GID=$(getent group docker | cut -d: -f3))
+# -f ensures groupadd succeeds even if the GID is already in use by another group in the image
+ARG DOCKER_GID=998
+RUN groupadd -r wopr \
+    && useradd -r -g wopr -m wopr \
+    && groupadd -f -g "${DOCKER_GID}" dockersock \
+    && usermod -aG dockersock wopr
 
-# Production node_modules (with native better-sqlite3 already compiled)
+# Production node_modules
 COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 
 # Compiled output
 COPY --chown=wopr:wopr --from=build /app/dist ./dist
-
-# Migration SQL files for drizzle-orm migrator
-COPY --chown=wopr:wopr drizzle/migrations/ ./drizzle/migrations/
 
 # Package manifest (needed by Node for ESM resolution)
 COPY --chown=wopr:wopr package.json ./
