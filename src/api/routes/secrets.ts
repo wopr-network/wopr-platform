@@ -37,7 +37,10 @@ const tokenMetadataMap = buildTokenMetadataMap();
 if (tokenMetadataMap.size === 0) {
   logger.warn("No API tokens configured — secrets routes will reject all requests");
 }
-secretsRoutes.use("/*", scopedBearerAuthWithTenant(tokenMetadataMap, "write"));
+// Scope bearer-token auth only to the paths this sub-app owns.
+// Using "/*" here would intercept all /api/* requests when mounted at /api.
+secretsRoutes.use("/instances/*", scopedBearerAuthWithTenant(tokenMetadataMap, "write"));
+secretsRoutes.use("/validate-key", scopedBearerAuthWithTenant(tokenMetadataMap, "write"));
 secretsRoutes.route(
   "/",
   createSecretsRoutes({
