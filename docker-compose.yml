@@ -95,7 +95,7 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
       - INTERNAL_API_URL=http://platform-api:3100
-      - BETTER_AUTH_URL=http://platform-api:3100
+      - BETTER_AUTH_URL=https://api.${DOMAIN}
       - NEXT_PUBLIC_APP_DOMAIN=app.${DOMAIN}
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))\""]

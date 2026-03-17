@@ -924,7 +924,7 @@ if (process.env.NODE_ENV !== "test") {
             logger.error("Failed to grant signup credits:", err);
           }
           try {
-            const org = await getOrgService().createOrg(userId, "My Workspace", `ws-${userId.slice(0, 8)}`);
+            const org = await getOrgService().getOrCreatePersonalOrg(userId, "My Workspace");
             logger.info(`Auto-created org ${org.id} for user ${userId}`);
           } catch (err) {
             logger.error("Failed to auto-create org:", err);
