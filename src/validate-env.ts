@@ -81,6 +81,29 @@ export function validateRequiredEnvVars(): void {
     warnings.push("PLATFORM_DOMAIN is not set — falling back to wopr.bot. " + "Set this for custom domains.");
   }
 
+  // --- COOKIE_DOMAIN: must start with '.' and be a valid domain ---
+
+  const cookieDomain = process.env.COOKIE_DOMAIN;
+  if (cookieDomain !== undefined && cookieDomain !== "") {
+    const leadingDotDomainRe = /^\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/;
+    if (!cookieDomain.startsWith(".")) {
+      errors.push(`COOKIE_DOMAIN must start with a leading '.' for cross-subdomain cookies (got: "${cookieDomain}")`);
+    } else if (!leadingDotDomainRe.test(cookieDomain)) {
+      errors.push(`COOKIE_DOMAIN is not a valid domain (got: "${cookieDomain}")`);
+    }
+  } else {
+    warnings.push("COOKIE_DOMAIN is not set — falling back to .wopr.bot. Set this for custom domains.");
+  }
+
+  // --- OPENROUTER_API_KEY: optional but required for hosted inference ---
+
+  if (!process.env.OPENROUTER_API_KEY) {
+    warnings.push(
+      "OPENROUTER_API_KEY is not set — hosted OpenRouter inference will be disabled. " +
+        "Set this to enable the hosted LLM inference gateway.",
+    );
+  }
+
   // --- Emit ---
 
   if (warnings.length > 0) {
