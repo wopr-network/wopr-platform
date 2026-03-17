@@ -909,6 +909,26 @@ if (process.env.NODE_ENV !== "test") {
     });
     logger.info("tRPC fleet router initialized");
 
+    // Initialize BetterAuth before getEmailVerifier() — must be called first.
+    {
+      const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
+      initBetterAuth({
+        pool: getPool(),
+        db: getDb(),
+        onUserCreated: async (userId) => {
+          try {
+            const { grantSignupCredits } = await import("@wopr-network/platform-core/credits");
+            const granted = await grantSignupCredits(getCreditLedger(), userId);
+            if (granted) logger.info(`Granted $5 welcome credits to user ${userId}`);
+          } catch (err) {
+            logger.error("Failed to grant signup credits:", err);
+          }
+        },
+      });
+      await runAuthMigrations();
+      logger.info("better-auth initialized and migrations applied");
+    }
+
     // Wire REST fleet routes with the same billing deps
     const { getEmailVerifier } = await import("@wopr-network/platform-core/auth/better-auth");
     setFleetDeps({
@@ -927,27 +947,6 @@ if (process.env.NODE_ENV !== "test") {
 
   // SOC 2 H7: Ensure backup verifier singleton is available for admin-triggered verification
   getBackupVerifier();
-
-  // Initialize BetterAuth (sessions, signup, login).
-  // Must be called before getEmailVerifier() or runAuthMigrations().
-  {
-    const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
-    initBetterAuth({
-      pool: getPool(),
-      db: getDb(),
-      onUserCreated: async (userId) => {
-        try {
-          const { grantSignupCredits } = await import("@wopr-network/platform-core/credits");
-          const granted = await grantSignupCredits(getCreditLedger(), userId);
-          if (granted) logger.info(`Granted $5 welcome credits to user ${userId}`);
-        } catch (err) {
-          logger.error("Failed to grant signup credits:", err);
-        }
-      },
-    });
-    await runAuthMigrations();
-    logger.info("better-auth initialized and migrations applied");
-  }
 
   // Runtime deduction scheduler — charges tenants for active bots + resource tier surcharges.
   // Runs once per day. referenceId is date-only so running more frequently wastes DB round-trips.
