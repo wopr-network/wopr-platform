@@ -37,16 +37,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 
 WORKDIR /app
 
-RUN groupadd wopr && useradd -g wopr -m wopr
+ARG DOCKER_GID=998
+RUN groupadd -r wopr \
+    && useradd -r -g wopr -m wopr \
+    && groupadd -g ${DOCKER_GID} dockersock \
+    && usermod -aG dockersock wopr
 
 # Production node_modules
 COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 
 # Compiled output
 COPY --chown=wopr:wopr --from=build /app/dist ./dist
-
-# Migration SQL files for drizzle-orm migrator
-COPY --chown=wopr:wopr drizzle/migrations/ ./drizzle/migrations/
 
 # Package manifest (needed by Node for ESM resolution)
 COPY --chown=wopr:wopr package.json ./
