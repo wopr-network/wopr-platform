@@ -3,9 +3,8 @@
 # ---------------------------------------------------------------------------
 FROM node:24-bookworm-slim AS deps
 
-# better-sqlite3 requires native compilation toolchain
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
-RUN corepack enable && corepack prepare pnpm@10 --activate
+# Install pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@10.31.0 --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
@@ -16,7 +15,7 @@ RUN pnpm install --frozen-lockfile --prod
 # ---------------------------------------------------------------------------
 FROM node:24-bookworm-slim AS build
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@10.31.0 --activate
 
 WORKDIR /app
 
@@ -40,7 +39,7 @@ WORKDIR /app
 
 RUN groupadd wopr && useradd -g wopr -m wopr
 
-# Production node_modules (with native better-sqlite3 already compiled)
+# Production node_modules
 COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 
 # Compiled output
