@@ -28,10 +28,11 @@ describe("integration: health routes", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 401 for unknown API routes without auth (middleware runs first)", async () => {
-    // /api/* has bearer auth middleware -- unauthenticated requests get 401
+  it("returns 404 for unknown API routes without auth", async () => {
+    // Unknown /api/* paths return 404 — auth middleware only runs on
+    // routes that have handlers, not on unmatched paths.
     const res = await app.request("/api/nonexistent");
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 
   it("returns 404 for unknown API routes with valid auth", async () => {
