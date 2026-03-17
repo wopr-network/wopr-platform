@@ -67,6 +67,7 @@ services:
       - BETTER_AUTH_URL=https://api.${DOMAIN}
       - UI_ORIGIN=https://${DOMAIN},https://app.${DOMAIN}
       - PLATFORM_DOMAIN=${DOMAIN}
+      - COOKIE_DOMAIN=.${DOMAIN}
       - WOPR_BOT_IMAGE=${WOPR_BOT_IMAGE:-ghcr.io/wopr-network/wopr:latest}
       - S3_BUCKET=${S3_BUCKET:-wopr-backups}
       - DO_SPACES_REGION=${DO_SPACES_REGION}
@@ -93,6 +94,7 @@ services:
     image: ghcr.io/wopr-network/wopr-platform-ui:latest
     environment:
       - NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
+      - INTERNAL_API_URL=http://platform-api:3100
       - BETTER_AUTH_URL=https://api.${DOMAIN}
       - NEXT_PUBLIC_APP_DOMAIN=app.${DOMAIN}
     healthcheck:
