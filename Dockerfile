@@ -1,10 +1,17 @@
 # ---------------------------------------------------------------------------
+# Global build arguments
+# ---------------------------------------------------------------------------
+ARG PNPM_VERSION=10.31.0
+
+# ---------------------------------------------------------------------------
 # Stage 1: Install production dependencies
 # ---------------------------------------------------------------------------
 FROM node:24-bookworm-slim AS deps
 
+ARG PNPM_VERSION
+
 # Install pnpm via corepack
-RUN corepack enable && corepack prepare pnpm@10.31.0 --activate
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
@@ -15,7 +22,9 @@ RUN pnpm install --frozen-lockfile --prod
 # ---------------------------------------------------------------------------
 FROM node:24-bookworm-slim AS build
 
-RUN corepack enable && corepack prepare pnpm@10.31.0 --activate
+ARG PNPM_VERSION
+
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
@@ -37,10 +46,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 
 WORKDIR /app
 
+# DOCKER_GID should match the host docker group GID (e.g. pass --build-arg DOCKER_GID=$(getent group docker | cut -d: -f3))
+# -f ensures groupadd succeeds even if the GID is already in use by another group in the image
 ARG DOCKER_GID=998
 RUN groupadd -r wopr \
     && useradd -r -g wopr -m wopr \
-    && groupadd -g ${DOCKER_GID} dockersock \
+    && groupadd -f -g "${DOCKER_GID}" dockersock \
     && usermod -aG dockersock wopr
 
 # Production node_modules
