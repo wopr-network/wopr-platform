@@ -101,6 +101,11 @@ function makeMockLedger(): ILedger {
       balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
       return makeEntry(tenantId, amount, type);
     },
+    async debitCapped(tenantId, amount, type, _opts?) {
+      const cents = amount.toCents();
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
+      return makeEntry(tenantId, amount, type);
+    },
     async balance(tenantId) {
       return Credit.fromCents(balances.get(tenantId) ?? 0);
     },

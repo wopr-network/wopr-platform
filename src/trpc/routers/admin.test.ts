@@ -21,6 +21,7 @@ function makeMockLedger(): ILedger {
     post: vi.fn().mockResolvedValue({} as JournalEntry),
     credit: vi.fn().mockResolvedValue({} as JournalEntry),
     debit: vi.fn().mockResolvedValue({} as JournalEntry),
+    debitCapped: vi.fn().mockResolvedValue({} as JournalEntry),
     balance: vi.fn().mockResolvedValue(Credit.ZERO),
     hasReferenceId: vi.fn().mockResolvedValue(false),
     history: vi.fn().mockResolvedValue([]),
