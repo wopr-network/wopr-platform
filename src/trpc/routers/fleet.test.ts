@@ -441,7 +441,7 @@ describe("fleet.controlInstance", () => {
     expect(fleetMock.mockInstance.start).not.toHaveBeenCalled();
   });
 
-  it("calls fleet.restart after verifying ownership", async () => {
+  it("calls instance.restart after verifying ownership", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "restart" });
     expect(result).toEqual({ ok: true });
