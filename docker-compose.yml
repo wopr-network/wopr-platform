@@ -84,9 +84,10 @@ services:
       - NODE_ENV=production
       - SHARED_NODE_MODULES_VOLUME=wopr-shared-node-modules
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      # Trust Docker bridge IPs so the rate limiter uses X-Forwarded-For
+      # Trust Docker bridge subnets so the rate limiter uses X-Forwarded-For
       # for the real client IP instead of the proxy/UI container's internal IP.
-      - TRUSTED_PROXY_IPS=172.18.0.1,172.18.0.2,172.18.0.3,172.18.0.4,172.18.0.5,172.18.0.6,172.18.0.7,172.19.0.1,172.19.0.2,172.19.0.3
+      # Override via .env for non-standard Docker network configs.
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-172.16.0.0/12}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
       interval: 30s
