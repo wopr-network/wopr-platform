@@ -98,6 +98,9 @@ function makeMockLedger(): ILedger {
     async debit() {
       return {} as JournalEntry;
     },
+    async debitCapped(_tenantId, _amount, _type, _opts?) {
+      return {} as JournalEntry;
+    },
     async balance() {
       return Credit.ZERO;
     },

@@ -29,6 +29,7 @@ describe("integration: fleet routes", () => {
     fleetMock.getInstance.mockResolvedValue(mockFleetInstance);
     mockFleetInstance.start.mockResolvedValue(undefined);
     mockFleetInstance.stop.mockResolvedValue(undefined);
+    mockFleetInstance.restart.mockResolvedValue(undefined);
   });
 
   // -- Authentication (middleware chain) ------------------------------------

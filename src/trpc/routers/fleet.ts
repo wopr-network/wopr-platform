@@ -282,9 +282,11 @@ export const fleetRouter = router({
             await instance.stop();
             break;
           }
-          case "restart":
-            await fleet.restart(input.id);
+          case "restart": {
+            const instance = await fleet.getInstance(input.id);
+            await instance.restart();
             break;
+          }
           case "destroy": {
             await removeInstance(fleet, deps().getServiceKeyRepo?.(), input.id);
             break;
@@ -866,7 +868,8 @@ export const fleetRouter = router({
       }
     }
     try {
-      await fleet.restart(input.id);
+      const instance = await fleet.getInstance(input.id);
+      await instance.restart();
       return { ok: true };
     } catch (err) {
       if (err instanceof BotNotFoundError) {

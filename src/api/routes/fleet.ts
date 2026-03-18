@@ -574,7 +574,8 @@ fleetRoutes.post("/bots/:id/restart", writeAuth, async (c) => {
   }
 
   try {
-    await fleet.restart(botId);
+    const instance = await fleet.getInstance(botId);
+    await instance.restart();
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);

@@ -342,9 +342,9 @@ describe("platform rate limit rules", () => {
     expect((await app.request(req("/fleet/bots"))).status).toBe(429);
   });
 
-  it("unmatched endpoints fall back to 60 req/min default", async () => {
+  it("unmatched endpoints fall back to 200 req/min default", async () => {
     const app = buildPlatformApp();
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 200; i++) {
       expect((await app.request(req("/api/quota"))).status).toBe(200);
     }
     expect((await app.request(req("/api/quota"))).status).toBe(429);
@@ -666,12 +666,13 @@ describe("trusted proxy validation (WOP-656)", () => {
     vi.useRealTimers();
   });
 
-  it("ignores X-Forwarded-For when TRUSTED_PROXY_IPS is not set", () => {
+  it("auto-trusts private socket IPs (RFC 1918) even without TRUSTED_PROXY_IPS", () => {
     const trusted = parseTrustedProxies(undefined);
     expect(trusted.size).toBe(0);
 
+    // 192.168.1.100 is a private RFC 1918 IP — auto-trusted, so XFF is used
     const ip = getClientIp("spoofed-ip", "192.168.1.100", trusted);
-    expect(ip).toBe("192.168.1.100");
+    expect(ip).toBe("spoofed-ip");
   });
 
   it("trusts X-Forwarded-For when socket address is in TRUSTED_PROXY_IPS", () => {

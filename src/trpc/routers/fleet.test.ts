@@ -117,6 +117,7 @@ function createFleetMock() {
     id: TEST_BOT_ID,
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
   };
   return {
     mockInstance,
@@ -440,11 +441,12 @@ describe("fleet.controlInstance", () => {
     expect(fleetMock.mockInstance.start).not.toHaveBeenCalled();
   });
 
-  it("calls fleet.restart after verifying ownership", async () => {
+  it("calls instance.restart after verifying ownership", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "restart" });
     expect(result).toEqual({ ok: true });
-    expect(fleetMock.restart).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.mockInstance.restart).toHaveBeenCalled();
   });
 
   it("throws NOT_FOUND for non-owned bot", async () => {
@@ -943,7 +945,8 @@ describe("fleet.restartInstance", () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.restartInstance({ id: TEST_BOT_ID });
     expect(result).toEqual({ ok: true });
-    expect(fleetMock.restart).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.mockInstance.restart).toHaveBeenCalled();
   });
 
   it("returns NOT_FOUND for wrong tenant", async () => {
@@ -953,7 +956,7 @@ describe("fleet.restartInstance", () => {
   });
 
   it("returns NOT_FOUND when fleet.restart throws BotNotFoundError", async () => {
-    fleetMock.restart.mockRejectedValueOnce(new BotNotFoundError(TEST_BOT_ID));
+    fleetMock.getInstance.mockRejectedValueOnce(new BotNotFoundError(TEST_BOT_ID));
     const caller = createCaller(authedContext());
     await expect(caller.fleet.restartInstance({ id: TEST_BOT_ID })).rejects.toThrow("Bot not found");
   });

@@ -63,6 +63,7 @@ class MockBotNotFoundError extends Error {
 const mockFleetInstance = {
   start: vi.fn(),
   stop: vi.fn(),
+  restart: vi.fn(),
 };
 
 const fleetMock = {
@@ -815,7 +816,7 @@ describe("fleet routes", () => {
 
   describe("POST /fleet/bots/:id/restart", () => {
     it("restarts a bot", async () => {
-      fleetMock.restart.mockResolvedValue(undefined);
+      mockFleetInstance.restart.mockResolvedValue(undefined);
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/restart`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
