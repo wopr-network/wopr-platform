@@ -35,6 +35,7 @@ export const JSON_HEADERS = { "Content-Type": "application/json", ...AUTH_HEADER
 export const mockFleetInstance = {
   start: vi.fn(),
   stop: vi.fn(),
+  restart: vi.fn(),
 };
 
 export const fleetMock = {

@@ -99,6 +99,9 @@ const fleetMock = {
       stop: vi.fn().mockImplementation(async () => {
         botRunningState.set(id, false);
       }),
+      restart: vi.fn().mockImplementation(async () => {
+        botRunningState.set(id, true);
+      }),
     };
   }),
   restart: vi.fn().mockImplementation(async (id: string) => {
