@@ -1,0 +1,2 @@
+ALTER TABLE "tenants" DROP CONSTRAINT "chk_tenants_type";--> statement-breakpoint
+ALTER TABLE "tenants" ADD CONSTRAINT "chk_tenants_type" CHECK ("tenants"."type" IN ('personal', 'org', 'platform_service'));
