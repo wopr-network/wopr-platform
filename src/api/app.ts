@@ -308,6 +308,9 @@ app.route("/fleet", botPluginRoutes);
 }
 app.route("/api/quota", quotaRoutes);
 app.route("/api/billing", billingRoutes);
+// Secrets routes handle /instances/:id/config/secrets and /validate-key.
+// Mounted at /api — middleware inside secretsRoutes is scoped to specific
+// sub-paths so it does not intercept other /api/* routes.
 app.route("/api", secretsRoutes);
 // Secret audit routes (WOP-1975) — session-authed for dashboard UI
 // GET /api/secrets/:id/audit returns paginated access events for a credential.
@@ -321,7 +324,14 @@ app.route("/api/instances/:id/snapshots", snapshotRoutes);
 app.route("/api/bots/:id/snapshots", botSnapshotRoutes);
 app.route("/api/instances/:id/friends", friendsRoutes);
 app.route("/api/audit", auditRoutes);
-app.route("/api/admin/audit", adminAuditRoutes);
+// Admin audit — requires bearer token with admin scope (same pattern as other admin routes).
+{
+  const _auditAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
+  const _adminAudit = new Hono();
+  _adminAudit.use("*", _auditAdminAuth);
+  _adminAudit.route("/", adminAuditRoutes);
+  app.route("/api/admin/audit", _adminAudit);
+}
 app.route("/api/admin/backups", adminBackupRoutes);
 // Admin compliance evidence route (WOP-529) — deferred init so DB is not opened at import time
 {

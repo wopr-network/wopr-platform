@@ -1,6 +1,6 @@
 import { encrypt } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TEST_TOKEN = "test-api-token";
 const TEST_PLATFORM_SECRET = "test-platform-secret-32bytes!!ok";
@@ -33,9 +33,13 @@ const { secretsRoutes } = await import("./secrets.js");
 const app = new Hono();
 app.route("/api", secretsRoutes);
 
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("secrets routes", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe("authentication", () => {

@@ -112,8 +112,13 @@ export function createAdminAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
 // Blocker: need to add a user-scoped tRPC audit procedure (admin.auditLog is admin-only).
 /** Pre-built audit routes with lazy DB initialization. */
 export const auditRoutes = new Hono<AuditEnv>();
-auditRoutes.get("/", (c) => handleUserAudit(c, getAuditRepo()));
+auditRoutes.get("/", (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+  return handleUserAudit(c, getAuditRepo());
+});
 
-/** Pre-built admin audit routes with lazy DB initialization. */
+/** Pre-built admin audit routes with lazy DB initialization.
+ * Auth is enforced by scopedBearerAuthWithTenant middleware in app.ts. */
 export const adminAuditRoutes = new Hono<AuditEnv>();
 adminAuditRoutes.get("/", (c) => handleAdminAudit(c, getAuditRepo()));
