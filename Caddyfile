@@ -16,8 +16,12 @@ app.{$DOMAIN} {
 # Platform API — api subdomain
 # NOTE: Set TRUSTED_PROXY_IPS env var on platform-api to this container's
 # Docker network IP (e.g. 172.18.0.5) so the rate limiter trusts XFF from Caddy.
+# header_up replaces X-Forwarded-For with the direct client IP so spoofed
+# XFF headers from attackers are stripped before reaching the rate limiter.
 api.{$DOMAIN} {
-	reverse_proxy platform-api:3100
+	reverse_proxy platform-api:3100 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }
 
 # Staging — staging subdomain (only active if the staging container exists)
@@ -27,5 +31,7 @@ staging.{$DOMAIN} {
 
 # Tenant subdomain routing — *.wopr.bot → platform-api resolves to container
 *.{$DOMAIN} {
-	reverse_proxy platform-api:3100
+	reverse_proxy platform-api:3100 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }
