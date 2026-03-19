@@ -48,7 +48,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.7",
+    "@biomejs/biome": "^2.4.8",
     "@electric-sql/pglite": "^0.3.16",
     "@types/dockerode": "^4.0.1",
     "@types/js-yaml": "^4.0.9",
