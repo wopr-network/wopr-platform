@@ -49,7 +49,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
-    "@electric-sql/pglite": "^0.3.16",
+    "@electric-sql/pglite": "^0.4.1",
     "@types/dockerode": "^4.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.5.0",
