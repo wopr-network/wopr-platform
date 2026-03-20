@@ -6,7 +6,7 @@ ARG PNPM_VERSION=10.31.0
 # ---------------------------------------------------------------------------
 # Stage 1: Install production dependencies
 # ---------------------------------------------------------------------------
-FROM node:25-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 
 ARG PNPM_VERSION
 
@@ -20,7 +20,7 @@ RUN pnpm install --frozen-lockfile --prod
 # ---------------------------------------------------------------------------
 # Stage 2: Build TypeScript
 # ---------------------------------------------------------------------------
-FROM node:25-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 
 ARG PNPM_VERSION
 
@@ -39,7 +39,7 @@ RUN pnpm build
 # ---------------------------------------------------------------------------
 # Stage 3: Runtime
 # ---------------------------------------------------------------------------
-FROM node:25-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 
 # curl for HEALTHCHECK
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

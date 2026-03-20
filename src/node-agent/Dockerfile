@@ -4,14 +4,14 @@
 # ---------------------------------------------------------------------------
 
 # Stage 1: Install production dependencies
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # Stage 2: Build TypeScript
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -22,7 +22,7 @@ COPY src/ ./src/
 RUN npm run build
 
 # Stage 3: Runtime
-FROM node:24-alpine AS runtime
+FROM node:26-alpine AS runtime
 
 # s3cmd for backup uploads to DO Spaces
 RUN apk add --no-cache s3cmd
