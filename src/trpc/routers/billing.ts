@@ -289,18 +289,19 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { cryptoClient, cryptoChargeRepo } = deps();
-      if (!cryptoClient || !cryptoChargeRepo) {
+      const { cryptoClient } = deps();
+      if (!cryptoClient) {
         throw new TRPCError({
           code: "NOT_IMPLEMENTED",
           message: "Crypto payments not configured",
         });
       }
-      const amountUsd = input.amountUsd;
-      const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
-      const amountUsdCents = Math.round(amountUsd * 100);
-      await cryptoChargeRepo.create(charge.chargeId, tenant, amountUsdCents);
-      return { referenceId: charge.chargeId, address: charge.address, chain: charge.chain };
+      const result = await cryptoClient.createCharge({
+        chain: "btc",
+        amountUsd: input.amountUsd,
+        metadata: { tenant },
+      });
+      return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
     }),
 
   /** Create a Stripe Customer Portal session. Returns null url when processor lacks portal support. */

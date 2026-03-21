@@ -4,12 +4,12 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network
 import type { ICryptoChargeRepository, IWebhookSeenRepository } from "@wopr-network/platform-core/billing";
 import {
   CryptoServiceClient,
-  handleCryptoWebhook,
+  type CryptoWebhookPayload,
+  handleKeyServerWebhook,
   type IPaymentProcessor,
   loadCryptoConfig,
   MIN_PAYMENT_USD,
   PaymentMethodOwnershipError,
-  verifyCryptoWebhookSignature,
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
@@ -87,18 +87,14 @@ const cryptoCheckoutBodySchema = z.object({
 });
 
 const cryptoWebhookBodySchema = z.object({
-  deliveryId: z.string().min(1),
-  webhookId: z.string().min(1),
-  originalDeliveryId: z.string().min(1),
-  isRedelivery: z.boolean(),
-  type: z.string().min(1),
-  timestamp: z.number(),
-  storeId: z.string().min(1),
-  invoiceId: z.string().min(1),
-  metadata: z.record(z.string(), z.unknown()).default({}),
-  manuallyMarked: z.boolean().optional(),
-  overPaid: z.boolean().optional(),
-  partiallyPaid: z.boolean().optional(),
+  chargeId: z.string().min(1),
+  chain: z.string().min(1),
+  address: z.string().min(1),
+  amountUsdCents: z.number().int(),
+  status: z.string().min(1),
+  txHash: z.string().optional(),
+  amountReceived: z.string().optional(),
+  confirmations: z.number().int().optional(),
 });
 
 // -- Route factory ------------------------------------------------------------
@@ -129,7 +125,7 @@ function getDeps(): BillingRouteDeps {
 
 // BOUNDARY(WOP-805): REST is the correct layer for billing routes.
 // - /billing/webhook: Stripe signature verification (raw HTTP, not tRPC)
-// - /billing/crypto/*: CryptoService webhook + checkout (external service signatures)
+// - /billing/crypto/*: Crypto key server webhook + checkout
 // - /billing/setup-intent: returns Stripe.js clientSecret (REST is simpler)
 // - /billing/payment-methods/:id: Stripe detach (REST for now)
 // - /billing/credits/checkout and /billing/portal: have tRPC mirrors;
@@ -392,7 +388,7 @@ billingRoutes.post("/webhook", async (c) => {
 /**
  * POST /billing/crypto/checkout
  *
- * Create a CryptoService charge for a one-time crypto credit purchase.
+ * Create a crypto payment charge for a one-time credit purchase.
  * Body: { tenant, amountUsd }
  */
 billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
@@ -414,17 +410,17 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const { cryptoChargeRepo: chargeStore } = getDeps();
-  if (!cryptoClient || !chargeStore) {
+  if (!cryptoClient) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
 
   try {
-    const { tenant, amountUsd } = parsed.data;
-    const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
-    const amountUsdCents = Math.round(amountUsd * 100);
-    await chargeStore.create(charge.chargeId, tenant, amountUsdCents);
-    return c.json({ referenceId: charge.chargeId, address: charge.address, chain: charge.chain });
+    const result = await cryptoClient.createCharge({
+      chain: "btc",
+      amountUsd: parsed.data.amountUsd,
+      metadata: { tenant: parsed.data.tenant },
+    });
+    return c.json({ chargeId: result.chargeId, address: result.address, referenceId: result.chargeId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
     return c.json({ error: message }, 500);
@@ -434,9 +430,9 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
 /**
  * POST /billing/crypto/webhook
  *
- * Crypto webhook endpoint. Verifies HMAC-SHA256 signature via BTCPAY-SIG header.
+ * Crypto key server webhook endpoint. Authenticates via shared secret in
+ * Authorization header. Payload follows KeyServerWebhookPayload schema.
  * Also supports IP allowlisting and sig-penalty exponential backoff.
- * Note: No bearer auth — webhook uses HMAC signature verification.
  */
 billingRoutes.post("/crypto/webhook", async (c) => {
   const { sigPenaltyRepo, creditLedger, cryptoChargeRepo: chargeStore, cryptoReplayGuard } = getDeps();
@@ -456,14 +452,14 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   }
 
   // ── IP allowlist (optional) ──
-  const allowedIps = process.env.BTCPAY_WEBHOOK_ALLOWED_IPS;
+  const allowedIps = process.env.CRYPTO_WEBHOOK_ALLOWED_IPS;
   if (allowedIps) {
     const allowed = allowedIps
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
     if (allowed.length === 0) {
-      logger.error("Crypto webhook rejected: BTCPAY_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
+      logger.error("Crypto webhook rejected: CRYPTO_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
       return c.json({ error: "Forbidden" }, 403);
     }
     const normalizedIp = ip.replace(/^::ffff:/, "");
@@ -473,17 +469,14 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     }
   }
 
-  // ── Read raw body (must happen before JSON parse) ──
-  const rawBody = await c.req.text();
-
-  // ── Authentication: HMAC-SHA256 via BTCPAY-SIG header ──
-  const webhookSecret = process.env.BTCPAY_WEBHOOK_SECRET;
+  // ── Authentication: shared secret via Authorization header ──
+  const webhookSecret = process.env.CRYPTO_WEBHOOK_SECRET;
   if (!webhookSecret) {
     return c.json({ error: "Crypto webhook secret not configured" }, 503);
   }
 
-  const sigHeader = c.req.header("BTCPAY-SIG");
-  const authenticated = verifyCryptoWebhookSignature(rawBody, sigHeader, webhookSecret);
+  const authHeader = c.req.header("Authorization");
+  const authenticated = authHeader === `Bearer ${webhookSecret}`;
 
   if (!authenticated) {
     try {
@@ -491,7 +484,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     } catch (err) {
       logger.warn("Failed to record sig penalty", { ip, err });
     }
-    logger.error("Crypto webhook signature verification failed", { ip });
+    logger.error("Crypto webhook authentication failed", { ip });
     return c.json({ error: "Unauthorized" }, 401);
   }
 
@@ -505,7 +498,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   // ── Parse and validate payload ──
   let body: Record<string, unknown>;
   try {
-    body = JSON.parse(rawBody) as Record<string, unknown>;
+    body = (await c.req.json()) as Record<string, unknown>;
   } catch {
     return c.json({ received: false }, 400);
   }
@@ -518,19 +511,19 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     return c.json({ received: false }, 400);
   }
 
-  const result = await handleCryptoWebhook(
+  const result = await handleKeyServerWebhook(
     {
       chargeStore,
       creditLedger,
       replayGuard: cryptoReplayGuard,
     },
-    parsed.data,
+    parsed.data as CryptoWebhookPayload,
   );
 
   if (result.duplicate) {
     logger.warn("Crypto webhook replay attempt detected", {
-      invoiceId: parsed.data.invoiceId,
-      type: parsed.data.type,
+      chargeId: parsed.data.chargeId,
+      status: parsed.data.status,
     });
   }
 
