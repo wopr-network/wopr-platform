@@ -190,6 +190,13 @@
       "when": 1773800418244,
       "tag": "0077_fine_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1774052900493,
+      "tag": "0078_smooth_jean_grey",
+      "breakpoints": true
     }
   ]
 }

@@ -3,8 +3,7 @@ import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import type { ICryptoChargeRepository, IWebhookSeenRepository } from "@wopr-network/platform-core/billing";
 import {
-  BTCPayClient,
-  createCryptoCheckout,
+  CryptoServiceClient,
   handleCryptoWebhook,
   type IPaymentProcessor,
   loadCryptoConfig,
@@ -27,7 +26,7 @@ export interface BillingRouteDeps {
   sigPenaltyRepo: ISigPenaltyRepository;
   /** Replay guard for Stripe webhook deduplication. */
   replayGuard: IWebhookSeenRepository;
-  /** Replay guard for BTCPay webhook deduplication. */
+  /** Replay guard for crypto webhook deduplication. */
   cryptoReplayGuard: IWebhookSeenRepository;
   affiliateRepo: IAffiliateRepository;
   cryptoChargeRepo?: ICryptoChargeRepository;
@@ -106,7 +105,7 @@ const cryptoWebhookBodySchema = z.object({
 
 let _deps: BillingRouteDeps | null = null;
 
-let cryptoClient: BTCPayClient | null = null;
+let cryptoClient: CryptoServiceClient | null = null;
 
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
@@ -115,7 +114,7 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   // Crypto initialization (optional — only if env vars are set)
   const cryptoConfig = loadCryptoConfig();
   if (cryptoConfig) {
-    cryptoClient = new BTCPayClient(cryptoConfig);
+    cryptoClient = new CryptoServiceClient(cryptoConfig);
   } else {
     cryptoClient = null;
   }
@@ -130,7 +129,7 @@ function getDeps(): BillingRouteDeps {
 
 // BOUNDARY(WOP-805): REST is the correct layer for billing routes.
 // - /billing/webhook: Stripe signature verification (raw HTTP, not tRPC)
-// - /billing/crypto/*: BTCPay webhook + checkout (external service signatures)
+// - /billing/crypto/*: CryptoService webhook + checkout (external service signatures)
 // - /billing/setup-intent: returns Stripe.js clientSecret (REST is simpler)
 // - /billing/payment-methods/:id: Stripe detach (REST for now)
 // - /billing/credits/checkout and /billing/portal: have tRPC mirrors;
@@ -393,7 +392,7 @@ billingRoutes.post("/webhook", async (c) => {
 /**
  * POST /billing/crypto/checkout
  *
- * Create a BTCPay payment session for a one-time crypto credit purchase.
+ * Create a CryptoService charge for a one-time crypto credit purchase.
  * Body: { tenant, amountUsd }
  */
 billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
@@ -421,8 +420,11 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
   }
 
   try {
-    const result = await createCryptoCheckout(cryptoClient, chargeStore, parsed.data);
-    return c.json({ url: result.url, referenceId: result.referenceId });
+    const { tenant, amountUsd } = parsed.data;
+    const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
+    const amountUsdCents = Math.round(amountUsd * 100);
+    await chargeStore.create(charge.chargeId, tenant, amountUsdCents);
+    return c.json({ referenceId: charge.chargeId, address: charge.address, chain: charge.chain });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
     return c.json({ error: message }, 500);
@@ -432,9 +434,9 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
 /**
  * POST /billing/crypto/webhook
  *
- * BTCPay Server webhook endpoint. Verifies HMAC-SHA256 signature via BTCPAY-SIG header.
+ * Crypto webhook endpoint. Verifies HMAC-SHA256 signature via BTCPAY-SIG header.
  * Also supports IP allowlisting and sig-penalty exponential backoff.
- * Note: No bearer auth — webhook uses BTCPay signature verification.
+ * Note: No bearer auth — webhook uses HMAC signature verification.
  */
 billingRoutes.post("/crypto/webhook", async (c) => {
   const { sigPenaltyRepo, creditLedger, cryptoChargeRepo: chargeStore, cryptoReplayGuard } = getDeps();
@@ -461,12 +463,12 @@ billingRoutes.post("/crypto/webhook", async (c) => {
       .map((s) => s.trim())
       .filter(Boolean);
     if (allowed.length === 0) {
-      logger.error("BTCPay webhook rejected: BTCPAY_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
+      logger.error("Crypto webhook rejected: BTCPAY_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
       return c.json({ error: "Forbidden" }, 403);
     }
     const normalizedIp = ip.replace(/^::ffff:/, "");
     if (!allowed.includes(normalizedIp)) {
-      logger.error("BTCPay webhook rejected: IP not in allowlist", { ip });
+      logger.error("Crypto webhook rejected: IP not in allowlist", { ip });
       return c.json({ error: "Forbidden" }, 403);
     }
   }
@@ -477,7 +479,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   // ── Authentication: HMAC-SHA256 via BTCPAY-SIG header ──
   const webhookSecret = process.env.BTCPAY_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    return c.json({ error: "BTCPay webhook secret not configured" }, 503);
+    return c.json({ error: "Crypto webhook secret not configured" }, 503);
   }
 
   const sigHeader = c.req.header("BTCPAY-SIG");
@@ -489,7 +491,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     } catch (err) {
       logger.warn("Failed to record sig penalty", { ip, err });
     }
-    logger.error("BTCPay webhook signature verification failed", { ip });
+    logger.error("Crypto webhook signature verification failed", { ip });
     return c.json({ error: "Unauthorized" }, 401);
   }
 
@@ -510,7 +512,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
 
   const parsed = cryptoWebhookBodySchema.safeParse(body);
   if (!parsed.success) {
-    logger.error("BTCPay webhook payload validation failed", {
+    logger.error("Crypto webhook payload validation failed", {
       errors: parsed.error.flatten().fieldErrors,
     });
     return c.json({ received: false }, 400);
@@ -526,7 +528,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   );
 
   if (result.duplicate) {
-    logger.warn("BTCPay webhook replay attempt detected", {
+    logger.warn("Crypto webhook replay attempt detected", {
       invoiceId: parsed.data.invoiceId,
       type: parsed.data.type,
     });

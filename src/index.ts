@@ -799,13 +799,15 @@ if (process.env.NODE_ENV !== "test") {
 
       if (stripeWebhookSecret) {
         // Create crypto billing deps before tRPC router so both REST and tRPC can share them.
-        const cryptoChargeRepo = process.env.BTCPAY_API_KEY ? new DrizzleCryptoChargeRepository(getDb()) : undefined;
-        let cryptoClient: import("@wopr-network/platform-core/billing").BTCPayClient | undefined;
-        if (process.env.BTCPAY_API_KEY) {
-          const { BTCPayClient, loadCryptoConfig } = await import("@wopr-network/platform-core/billing");
+        const cryptoChargeRepo = process.env.CRYPTO_SERVICE_URL
+          ? new DrizzleCryptoChargeRepository(getDb())
+          : undefined;
+        let cryptoClient: import("@wopr-network/platform-core/billing").CryptoServiceClient | undefined;
+        if (process.env.CRYPTO_SERVICE_URL) {
+          const { CryptoServiceClient, loadCryptoConfig } = await import("@wopr-network/platform-core/billing");
           const cryptoConfig = loadCryptoConfig();
           if (cryptoConfig) {
-            cryptoClient = new BTCPayClient(cryptoConfig);
+            cryptoClient = new CryptoServiceClient(cryptoConfig);
           }
         }
 

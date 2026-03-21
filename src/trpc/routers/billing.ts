@@ -6,8 +6,12 @@
 
 import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
-import type { BTCPayClient, ICryptoChargeRepository, IPaymentProcessor } from "@wopr-network/platform-core/billing";
-import { createCryptoCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
+import type {
+  CryptoServiceClient,
+  ICryptoChargeRepository,
+  IPaymentProcessor,
+} from "@wopr-network/platform-core/billing";
+import { MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import {
@@ -156,7 +160,7 @@ export interface BillingRouterDeps {
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
-  cryptoClient?: BTCPayClient;
+  cryptoClient?: CryptoServiceClient;
   cryptoChargeRepo?: ICryptoChargeRepository;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
@@ -276,7 +280,7 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
-  /** Create a PayRam crypto payment session. Returns a hosted payment URL. */
+  /** Create a CryptoService charge. Returns on-chain address and chain for payment. */
   cryptoCheckout: tenantProcedure
     .input(
       z.object({
@@ -292,11 +296,11 @@ export const billingRouter = router({
           message: "Crypto payments not configured",
         });
       }
-      const result = await createCryptoCheckout(cryptoClient, cryptoChargeRepo, {
-        tenant,
-        amountUsd: input.amountUsd,
-      });
-      return { url: result.url, referenceId: result.referenceId };
+      const amountUsd = input.amountUsd;
+      const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
+      const amountUsdCents = Math.round(amountUsd * 100);
+      await cryptoChargeRepo.create(charge.chargeId, tenant, amountUsdCents);
+      return { referenceId: charge.chargeId, address: charge.address, chain: charge.chain };
     }),
 
   /** Create a Stripe Customer Portal session. Returns null url when processor lacks portal support. */
