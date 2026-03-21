@@ -3,6 +3,7 @@ import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/dri
 import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-penalty-repository";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import {
+  CryptoServiceClient,
   DrizzleCryptoChargeRepository,
   noOpReplayGuard,
   PaymentMethodOwnershipError,
@@ -1132,32 +1133,29 @@ describe("billing routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 200 with referenceId, address, chain on success", async () => {
-      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: async () => ({
-            chargeId: "charge-abc-123",
-            address: "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
-            chain: "btc",
-            token: "BTC",
-            amountUsd: 25,
-            derivationIndex: 0,
-            expiresAt: new Date().toISOString(),
-          }),
-        } as Response),
-      );
+    it("persists charge locally after successful createCharge and returns chargeId/address", async () => {
+      const chargeId = crypto.randomUUID();
+      vi.stubEnv("CRYPTO_SERVICE_URL", "http://localhost:3100");
+      const chargeRepo = new DrizzleCryptoChargeRepository(db);
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
+        cryptoChargeRepo: chargeRepo,
         replayGuard: noOpReplayGuard,
         cryptoReplayGuard: noOpReplayGuard,
+      });
+
+      const createChargeSpy = vi.spyOn(CryptoServiceClient.prototype, "createCharge").mockResolvedValue({
+        chargeId,
+        address: "bc1qtestaddress",
+        chain: "btc",
+        token: "BTC",
+        amountUsd: 25,
+        derivationIndex: 0,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
       });
 
       const res = await billingRoutes.request("/crypto/checkout", {
@@ -1166,8 +1164,20 @@ describe("billing routes", () => {
         body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
       });
 
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.chargeId).toBe(chargeId);
+      expect(body.address).toBe("bc1qtestaddress");
+      expect(body.referenceId).toBe(chargeId);
+
+      // Verify the charge was persisted locally for reconciliation
+      const persisted = await chargeRepo.getByReferenceId(chargeId);
+      expect(persisted).not.toBeNull();
+      expect(persisted?.tenantId).toBe("t-1");
+      expect(persisted?.amountUsdCents).toBe(2500);
+
+      createChargeSpy.mockRestore();
       vi.unstubAllEnvs();
-      vi.unstubAllGlobals();
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
@@ -1177,12 +1187,6 @@ describe("billing routes", () => {
         replayGuard: noOpReplayGuard,
         cryptoReplayGuard: noOpReplayGuard,
       });
-
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.referenceId).toBe("charge-abc-123");
-      expect(body.address).toBe("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");
-      expect(body.chain).toBe("btc");
     });
   });
 

@@ -426,11 +426,11 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     // Persist a pending charge record so the charge is visible and reconcilable
     // even if the webhook is never delivered (network failure, key rotation, etc.).
     if (chargeStore) {
-      await chargeStore.create(
-        result.chargeId,
-        parsed.data.tenant,
-        Math.round(parsed.data.amountUsd * 100),
-      );
+      try {
+        await chargeStore.create(result.chargeId, parsed.data.tenant, Math.round(parsed.data.amountUsd * 100));
+      } catch (persistErr) {
+        logger.warn("Failed to persist crypto charge locally", { chargeId: result.chargeId, err: persistErr });
+      }
     }
     return c.json({ chargeId: result.chargeId, address: result.address, referenceId: result.chargeId });
   } catch (err) {

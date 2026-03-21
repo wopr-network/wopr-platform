@@ -289,7 +289,7 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { cryptoClient } = deps();
+      const { cryptoClient, cryptoChargeRepo: chargeStore } = deps();
       if (!cryptoClient) {
         throw new TRPCError({
           code: "NOT_IMPLEMENTED",
@@ -303,9 +303,12 @@ export const billingRouter = router({
       });
       // Persist a pending charge record so the charge is visible and reconcilable
       // even if the webhook is never delivered (network failure, key rotation, etc.).
-      const { cryptoChargeRepo } = deps();
-      if (cryptoChargeRepo) {
-        await cryptoChargeRepo.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
+      if (chargeStore) {
+        try {
+          await chargeStore.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
+        } catch (persistErr) {
+          logger.warn("Failed to persist crypto charge locally", { chargeId: result.chargeId, err: persistErr });
+        }
       }
       return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
     }),
