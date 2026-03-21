@@ -19,6 +19,7 @@ import type { IAffiliateRepository } from "@wopr-network/platform-core/monetizat
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
+import { createCryptoCharge } from "../../monetization/create-crypto-charge.js";
 
 export interface BillingRouteDeps {
   processor: IPaymentProcessor;
@@ -418,15 +419,15 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
   }
 
   try {
-    const result = await cryptoClient.createCharge({
-      chain: "btc",
-      amountUsd: parsed.data.amountUsd,
-      metadata: { tenant: parsed.data.tenant },
-    });
-    // Persist a pending charge record so the charge is visible and reconcilable
-    // even if the webhook is never delivered (network failure, key rotation, etc.).
-    await chargeStore.create(result.chargeId, parsed.data.tenant, Math.round(parsed.data.amountUsd * 100));
-    return c.json({ chargeId: result.chargeId, address: result.address, referenceId: result.chargeId });
+    const { tenant, amountUsd } = parsed.data;
+    const result = await createCryptoCharge(
+      cryptoClient,
+      chargeStore,
+      tenant,
+      amountUsd,
+      process.env.CRYPTO_WEBHOOK_URL,
+    );
+    return c.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
     return c.json({ error: message }, 500);

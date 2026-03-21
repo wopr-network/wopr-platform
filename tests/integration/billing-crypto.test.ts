@@ -219,8 +219,33 @@ describe("integration: billing crypto routes", () => {
       });
 
       it("accepts valid Bearer token and processes webhook", async () => {
+        const chargeId = crypto.randomUUID();
+        const chargeStore = new DrizzleCryptoChargeRepository(db);
+        await chargeStore.create(chargeId, "t-webhook-test", 2500);
+
+        // Use a mock creditLedger to prevent DrizzleLedger.credit() from calling
+        // db.transaction(), which issues COMMIT and breaks the outer PGlite test savepoint.
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: {
+            hasReferenceId: vi.fn().mockResolvedValue(false),
+            credit: vi.fn().mockResolvedValue({ id: crypto.randomUUID() }),
+          } as unknown as InstanceType<typeof DrizzleLedger>,
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          cryptoChargeRepo: chargeStore,
+          replayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
+          sigPenaltyRepo: {
+            get: () => null,
+            recordFailure: (ip: string, source: string) => ({ ip, source, failures: 1, blockedUntil: 0, updatedAt: 0 }),
+            clear: () => {},
+            purgeStale: () => 0,
+          },
+        });
+
         const body = JSON.stringify({
-          chargeId: "chg-003",
+          chargeId,
           chain: "btc",
           address: "bc1qtest3",
           amountUsdCents: 2500,
@@ -232,9 +257,9 @@ describe("integration: billing crypto routes", () => {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${WEBHOOK_SECRET}` },
           body,
         });
-        // Not 401/403; may be 200 or 400 depending on charge lookup
-        expect(res.status).not.toBe(401);
-        expect(res.status).not.toBe(403);
+        expect(res.status).toBe(200);
+        const resBody = await res.json();
+        expect(resBody.handled).toBe(true);
       });
 
       it("does NOT require admin bearer auth (webhook uses shared secret)", async () => {

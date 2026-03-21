@@ -31,6 +31,7 @@ import type { PromotionEngine } from "@wopr-network/platform-core/monetization/p
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { protectedProcedure, publicProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
+import { createCryptoCharge } from "../../monetization/create-crypto-charge.js";
 
 // ---------------------------------------------------------------------------
 // Schedule interval → hours mapping
@@ -296,15 +297,13 @@ export const billingRouter = router({
           message: "Crypto payments not configured",
         });
       }
-      const result = await cryptoClient.createCharge({
-        chain: "btc",
-        amountUsd: input.amountUsd,
-        metadata: { tenant },
-      });
-      // Persist a pending charge record so the charge is visible and reconcilable
-      // even if the webhook is never delivered (network failure, key rotation, etc.).
-      await chargeStore.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
-      return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
+      return await createCryptoCharge(
+        cryptoClient,
+        chargeStore,
+        tenant,
+        input.amountUsd,
+        process.env.CRYPTO_WEBHOOK_URL,
+      );
     }),
 
   /** Create a Stripe Customer Portal session. Returns null url when processor lacks portal support. */
