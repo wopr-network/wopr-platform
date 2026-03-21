@@ -493,7 +493,11 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     } catch (err) {
       logger.warn("Failed to record sig penalty", { ip, err });
     }
-    logger.error("Crypto webhook authentication failed", { ip });
+    try {
+      logger.error("Crypto webhook authentication failed", { ip });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
     return c.json({ error: "Unauthorized" }, 401);
   }
 
@@ -530,10 +534,14 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   );
 
   if (result.duplicate) {
-    logger.warn("Crypto webhook replay attempt detected", {
-      chargeId: parsed.data.chargeId,
-      status: parsed.data.status,
-    });
+    try {
+      logger.warn("Crypto webhook replay attempt detected", {
+        chargeId: parsed.data.chargeId,
+        status: parsed.data.status,
+      });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
   }
 
   // Transport-level ACK is always affirmative once auth + payload validation pass.
