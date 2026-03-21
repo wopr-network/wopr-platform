@@ -280,7 +280,7 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
-  /** Create a PayRam crypto payment session. Returns a hosted payment URL. */
+  /** Create a CryptoService charge. Returns on-chain address and chain for payment. */
   cryptoCheckout: tenantProcedure
     .input(
       z.object({
