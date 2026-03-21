@@ -298,7 +298,7 @@ export const billingRouter = router({
         message: "Crypto payments not configured",
       });
     }
-    const charge = await chargeStore.get(input.referenceId);
+    const charge = await chargeStore.getByReferenceId(input.referenceId);
     if (!charge) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Charge not found" });
     }
