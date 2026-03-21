@@ -96,8 +96,8 @@ const cryptoWebhookBodySchema = z.object({
   status: z.string().min(1),
   txHash: z.string().optional(),
   amountReceived: z.string().optional(),
-  confirmations: z.number().int().optional(),
-  confirmationsRequired: z.number().int().optional(),
+  confirmations: z.number().int().nonnegative().optional(),
+  confirmationsRequired: z.number().int().nonnegative().optional(),
 });
 
 // -- Route factory ------------------------------------------------------------
