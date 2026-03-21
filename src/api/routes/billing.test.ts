@@ -1132,6 +1132,59 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(400);
     });
+
+    it("returns 200 with referenceId, address, chain on success", async () => {
+      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            chargeId: "charge-abc-123",
+            address: "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
+            chain: "btc",
+            token: "BTC",
+            amountUsd: 25,
+            derivationIndex: 0,
+            expiresAt: new Date().toISOString(),
+          }),
+        } as Response),
+      );
+      setBillingDeps({
+        processor: createMockProcessor(),
+        creditLedger: new DrizzleLedger(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+        cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
+        replayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
+      });
+
+      const res = await billingRoutes.request("/crypto/checkout", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
+      });
+
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      setBillingDeps({
+        processor: createMockProcessor(),
+        creditLedger: new DrizzleLedger(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        cryptoReplayGuard: noOpReplayGuard,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.referenceId).toBe("charge-abc-123");
+      expect(body.address).toBe("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");
+      expect(body.chain).toBe("btc");
+    });
   });
 
   // -- POST /crypto/webhook --------------------------------------------------

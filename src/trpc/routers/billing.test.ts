@@ -3,7 +3,11 @@ import type { PGlite } from "@electric-sql/pglite";
 import type { IAuditLogRepository } from "@wopr-network/platform-core/audit/audit-log-repository";
 import { AuditLogger } from "@wopr-network/platform-core/audit/logger";
 import type { AuditEntry } from "@wopr-network/platform-core/audit/schema";
-import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import type {
+  CryptoServiceClient,
+  ICryptoChargeRepository,
+  IPaymentProcessor,
+} from "@wopr-network/platform-core/billing";
 import type { ILedger, JournalEntry } from "@wopr-network/platform-core/credits";
 import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
@@ -387,6 +391,35 @@ describe("billingRouter", () => {
       const caller = makeCaller(makeCtx("user-1", "tenant-1"));
       // MIN_PAYMENT_USD is 10; amount 0.01 fails zod validation
       await expect(caller.cryptoCheckout({ amountUsd: 0.01 })).rejects.toThrow();
+    });
+
+    it("returns referenceId, address, chain on success", async () => {
+      const mockCreateCharge = vi.fn().mockResolvedValue({
+        chargeId: "charge-abc-123",
+        address: "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
+        chain: "btc",
+        token: "BTC",
+        amountUsd: 10,
+        derivationIndex: 0,
+        expiresAt: new Date().toISOString(),
+      });
+      const mockCreate = vi.fn().mockResolvedValue(undefined);
+      injectDeps({
+        cryptoClient: { createCharge: mockCreateCharge } as unknown as CryptoServiceClient,
+        cryptoChargeRepo: {
+          create: mockCreate,
+          getByReferenceId: vi.fn(),
+          updateStatus: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.cryptoCheckout({ amountUsd: 10 });
+
+      expect(result.referenceId).toBe("charge-abc-123");
+      expect(result.address).toBe("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");
+      expect(result.chain).toBe("btc");
+      expect(mockCreateCharge).toHaveBeenCalledWith({ chain: "btc", amountUsd: 10 });
+      expect(mockCreate).toHaveBeenCalledWith("charge-abc-123", "tenant-1", 1000);
     });
   });
 
