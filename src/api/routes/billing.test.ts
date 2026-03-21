@@ -1194,6 +1194,8 @@ describe("billing routes", () => {
       expect(persisted).not.toBeNull();
       expect(persisted?.tenantId).toBe("t-1");
       expect(persisted?.amountUsdCents).toBe(2500);
+      // Verify chain is persisted immediately (not deferred to webhook)
+      expect(persisted?.chain).toBe("btc");
     });
   });
 

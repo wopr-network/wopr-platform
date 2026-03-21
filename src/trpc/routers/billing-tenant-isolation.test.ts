@@ -251,6 +251,7 @@ describe("billing tenant isolation (WOP-1406)", () => {
       input: { priceId: "p", successUrl: "https://app.wopr.bot/a", cancelUrl: "https://app.wopr.bot/b" },
     },
     { name: "cryptoCheckout", input: { amountUsd: 10 } },
+    { name: "checkout", input: { chain: "btc", amountUsd: 10 } },
     { name: "portalSession", input: { returnUrl: "https://app.wopr.bot/a" } },
     { name: "applyCoupon", input: { code: "FREE100" } },
   ];

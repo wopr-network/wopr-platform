@@ -332,7 +332,17 @@ export const billingRouter = router({
       });
       // Persist a pending charge record so the charge is visible and reconcilable
       // even if the webhook is never delivered (network failure, key rotation, etc.).
-      await chargeStore.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
+      // Use createStablecoinCharge to store the selected chain from the start so
+      // chargeStatus can return the network immediately without waiting for a webhook.
+      await chargeStore.createStablecoinCharge({
+        referenceId: result.chargeId,
+        tenantId: tenant,
+        amountUsdCents: Math.round(input.amountUsd * 100),
+        chain: result.chain,
+        token: result.token,
+        depositAddress: result.address,
+        derivationIndex: result.derivationIndex,
+      });
       return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
     }),
 
@@ -357,7 +367,15 @@ export const billingRouter = router({
         amountUsd: input.amountUsd,
         metadata: { tenant },
       });
-      await chargeStore.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
+      await chargeStore.createStablecoinCharge({
+        referenceId: result.chargeId,
+        tenantId: tenant,
+        amountUsdCents: Math.round(input.amountUsd * 100),
+        chain: result.chain,
+        token: result.token,
+        depositAddress: result.address,
+        derivationIndex: result.derivationIndex,
+      });
       return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
     }),
 
