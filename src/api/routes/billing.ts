@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { getClientIpFromContext } from "@wopr-network/platform-core/api/middleware/get-client-ip";
 import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-penalty-repository";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
@@ -414,12 +415,23 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
 
+  const { cryptoChargeRepo: chargeStore } = getDeps();
+
   try {
     const result = await cryptoClient.createCharge({
       chain: "btc",
       amountUsd: parsed.data.amountUsd,
       metadata: { tenant: parsed.data.tenant },
     });
+    // Persist a pending charge record so the charge is visible and reconcilable
+    // even if the webhook is never delivered (network failure, key rotation, etc.).
+    if (chargeStore) {
+      await chargeStore.create(
+        result.chargeId,
+        parsed.data.tenant,
+        Math.round(parsed.data.amountUsd * 100),
+      );
+    }
     return c.json({ chargeId: result.chargeId, address: result.address, referenceId: result.chargeId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
@@ -476,7 +488,9 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   }
 
   const authHeader = c.req.header("Authorization");
-  const authenticated = authHeader === `Bearer ${webhookSecret}`;
+  const expected = Buffer.from(`Bearer ${webhookSecret}`);
+  const actual = Buffer.from(authHeader ?? "");
+  const authenticated = expected.length === actual.length && timingSafeEqual(expected, actual);
 
   if (!authenticated) {
     try {

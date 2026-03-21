@@ -19,6 +19,9 @@ CREATE TABLE "path_allocations" (
 --> statement-breakpoint
 CREATE TABLE "webhook_deliveries" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "webhook_deliveries_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	-- charge_id intentionally has no FK to crypto_charges: it mirrors the charge ID
+	-- assigned by the crypto key server and the local row is created at checkout time,
+	-- but delivery rows may arrive before the local charge row is fully committed.
 	"charge_id" text NOT NULL,
 	"callback_url" text NOT NULL,
 	"payload" text NOT NULL,

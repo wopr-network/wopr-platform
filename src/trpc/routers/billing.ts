@@ -301,6 +301,12 @@ export const billingRouter = router({
         amountUsd: input.amountUsd,
         metadata: { tenant },
       });
+      // Persist a pending charge record so the charge is visible and reconcilable
+      // even if the webhook is never delivered (network failure, key rotation, etc.).
+      const { cryptoChargeRepo } = deps();
+      if (cryptoChargeRepo) {
+        await cryptoChargeRepo.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
+      }
       return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
     }),
 
