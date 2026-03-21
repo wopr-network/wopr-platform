@@ -1,0 +1,76 @@
+name: Dependabot Stale Closer
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  close-stale:
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Close stale failing dependabot PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const MAX_AGE_HOURS = 48;
+            const now = Date.now();
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const dependabotPRs = prs.filter(pr => pr.user.login === 'dependabot[bot]');
+            core.info(`Found ${dependabotPRs.length} open dependabot PRs`);
+
+            for (const pr of dependabotPRs) {
+              const { data: checks } = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: pr.head.sha,
+              });
+
+              const ciChecks = ['lint', 'build', 'unit-test', 'integration-test', 'e2e-test'];
+              const failing = checks.check_runs.filter(
+                c => c.conclusion === 'failure' && ciChecks.includes(c.name)
+              );
+
+              if (failing.length === 0) continue;
+
+              // Use the oldest failure timestamp
+              const failedAt = Math.min(
+                ...failing.map(f => new Date(f.completed_at).getTime())
+              );
+              const ageHours = (now - failedAt) / (1000 * 60 * 60);
+
+              if (ageHours < MAX_AGE_HOURS) continue;
+
+              const failedNames = failing.map(f => f.name).join(', ');
+              core.info(`Closing PR #${pr.number}: ${pr.title} (${failedNames} failing for ${Math.round(ageHours)}h)`);
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: [
+                  `Closing: CI checks (**${failedNames}**) have been failing for ${Math.round(ageHours)} hours.`,
+                  '',
+                  'Dependabot will re-open this when a new version is available.',
+                  'To retry manually: re-open this PR and push to trigger CI.',
+                ].join('\n'),
+              });
+
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                state: 'closed',
+              });
+            }
