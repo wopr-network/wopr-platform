@@ -425,9 +425,7 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     });
     // Persist a pending charge record so the charge is visible and reconcilable
     // even if the webhook is never delivered (network failure, key rotation, etc.).
-    if (chargeStore) {
-      await chargeStore.create(result.chargeId, parsed.data.tenant, Math.round(parsed.data.amountUsd * 100));
-    }
+    await chargeStore.create(result.chargeId, parsed.data.tenant, Math.round(parsed.data.amountUsd * 100));
     return c.json({ chargeId: result.chargeId, address: result.address, referenceId: result.chargeId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
