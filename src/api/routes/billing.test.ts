@@ -1,9 +1,9 @@
-import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/drizzle-sig-penalty-repository";
 import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-penalty-repository";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import {
+  CryptoServiceClient,
   DrizzleCryptoChargeRepository,
   noOpReplayGuard,
   PaymentMethodOwnershipError,
@@ -1101,7 +1101,7 @@ describe("billing routes", () => {
 
     it("returns 400 for invalid JSON body (when crypto service is configured)", async () => {
       // Configure crypto service so that the JSON parsing path is reached
-      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
+      vi.stubEnv("CRYPTO_SERVICE_URL", "http://localhost:3100");
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
@@ -1113,104 +1113,110 @@ describe("billing routes", () => {
         cryptoReplayGuard: noOpReplayGuard,
       });
 
-      const res = await billingRoutes.request("/crypto/checkout", {
-        method: "POST",
-        headers: { ...authHeader, "Content-Type": "application/json" },
-        body: "not-json",
-      });
-
-      vi.unstubAllEnvs();
-      setBillingDeps({
-        processor: createMockProcessor(),
-        creditLedger: new DrizzleLedger(db),
-        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
-        sigPenaltyRepo: createTestSigPenaltyRepo(db),
-        affiliateRepo: new DrizzleAffiliateRepository(db),
-        replayGuard: noOpReplayGuard,
-        cryptoReplayGuard: noOpReplayGuard,
-      });
+      let res: Response;
+      try {
+        res = await billingRoutes.request("/crypto/checkout", {
+          method: "POST",
+          headers: { ...authHeader, "Content-Type": "application/json" },
+          body: "not-json",
+        });
+      } finally {
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new DrizzleLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
+        });
+      }
 
       expect(res.status).toBe(400);
     });
 
-    it("returns 200 with referenceId, address, chain on success", async () => {
-      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: async () => ({
-            chargeId: "charge-abc-123",
-            address: "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
-            chain: "btc",
-            token: "BTC",
-            amountUsd: 25,
-            derivationIndex: 0,
-            expiresAt: new Date().toISOString(),
-          }),
-        } as Response),
-      );
+    it("persists charge locally after successful createCharge and returns chargeId/address", async () => {
+      const chargeId = crypto.randomUUID();
+      vi.stubEnv("CRYPTO_SERVICE_URL", "http://localhost:3100");
+      const chargeRepo = new DrizzleCryptoChargeRepository(db);
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        cryptoChargeRepo: new DrizzleCryptoChargeRepository(db),
+        cryptoChargeRepo: chargeRepo,
         replayGuard: noOpReplayGuard,
         cryptoReplayGuard: noOpReplayGuard,
       });
 
-      const res = await billingRoutes.request("/crypto/checkout", {
-        method: "POST",
-        headers: { ...authHeader, "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
+      const createChargeSpy = vi.spyOn(CryptoServiceClient.prototype, "createCharge").mockResolvedValue({
+        chargeId,
+        address: "bc1qtestaddress",
+        chain: "btc",
+        token: "BTC",
+        amountUsd: 25,
+        derivationIndex: 0,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
       });
 
-      vi.unstubAllEnvs();
-      vi.unstubAllGlobals();
-      setBillingDeps({
-        processor: createMockProcessor(),
-        creditLedger: new DrizzleLedger(db),
-        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
-        sigPenaltyRepo: createTestSigPenaltyRepo(db),
-        affiliateRepo: new DrizzleAffiliateRepository(db),
-        replayGuard: noOpReplayGuard,
-        cryptoReplayGuard: noOpReplayGuard,
-      });
+      let res: Response;
+      try {
+        res = await billingRoutes.request("/crypto/checkout", {
+          method: "POST",
+          headers: { ...authHeader, "Content-Type": "application/json" },
+          body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
+        });
+      } finally {
+        createChargeSpy.mockRestore();
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new DrizzleLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
+        });
+      }
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.referenceId).toBe("charge-abc-123");
-      expect(body.address).toBe("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");
-      expect(body.chain).toBe("btc");
+      expect(body.chargeId).toBe(chargeId);
+      expect(body.address).toBe("bc1qtestaddress");
+      expect(body.referenceId).toBe(chargeId);
+
+      // Verify the charge was persisted locally for reconciliation
+      const persisted = await chargeRepo.getByReferenceId(chargeId);
+      expect(persisted).not.toBeNull();
+      expect(persisted?.tenantId).toBe("t-1");
+      expect(persisted?.amountUsdCents).toBe(2500);
     });
   });
 
   // -- POST /crypto/webhook --------------------------------------------------
 
   describe("POST /crypto/webhook", () => {
-    it("returns 503 when crypto service not configured (no env vars)", async () => {
+    it("returns 503 when crypto not configured (no charge repo)", async () => {
       const res = await billingRoutes.request("/crypto/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          deliveryId: "del-001",
-          webhookId: "wh-001",
-          originalDeliveryId: "del-001",
-          isRedelivery: false,
-          type: "InvoiceSettled",
-          timestamp: 1700000000,
-          storeId: "store-1",
-          invoiceId: "inv-001",
+          chargeId: "chg-001",
+          chain: "btc",
+          address: "bc1qtest",
+          amountUsdCents: 2500,
+          status: "confirmed",
         }),
       });
 
       expect(res.status).toBe(503);
     });
 
-    it("does NOT require bearer auth (uses crypto signature)", async () => {
-      // Without bearer auth, it should NOT return 401.
+    it("does NOT require bearer auth (uses shared secret)", async () => {
+      // Without bearer auth, it should NOT return 401 from admin middleware.
       // It should return 503 (not configured) or some other non-401 status.
       const res = await billingRoutes.request("/crypto/webhook", {
         method: "POST",
@@ -1221,8 +1227,8 @@ describe("billing routes", () => {
       expect(res.status).not.toBe(401);
     });
 
-    it("returns 503 when BTCPAY_WEBHOOK_SECRET is not set but crypto service is configured", async () => {
-      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
+    it("returns 503 when CRYPTO_WEBHOOK_SECRET is not set but crypto is configured", async () => {
+      vi.stubEnv("CRYPTO_SERVICE_URL", "http://localhost:3100");
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
@@ -1234,47 +1240,43 @@ describe("billing routes", () => {
         cryptoReplayGuard: noOpReplayGuard,
       });
 
-      const res = await billingRoutes.request("/crypto/webhook", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          deliveryId: "del-001",
-          webhookId: "wh-001",
-          originalDeliveryId: "del-001",
-          isRedelivery: false,
-          type: "InvoiceSettled",
-          timestamp: 1700000000,
-          storeId: "store-1",
-          invoiceId: "inv-001",
-        }),
-      });
-
-      vi.unstubAllEnvs();
-      setBillingDeps({
-        processor: createMockProcessor(),
-        creditLedger: new DrizzleLedger(db),
-        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
-        sigPenaltyRepo: createTestSigPenaltyRepo(db),
-        affiliateRepo: new DrizzleAffiliateRepository(db),
-        replayGuard: noOpReplayGuard,
-        cryptoReplayGuard: noOpReplayGuard,
-      });
+      let res: Response;
+      try {
+        res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chargeId: "chg-001",
+            chain: "btc",
+            address: "bc1qtest",
+            amountUsdCents: 2500,
+            status: "confirmed",
+          }),
+        });
+      } finally {
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new DrizzleLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
+        });
+      }
 
       expect(res.status).toBe(503);
     });
 
-    describe("HMAC signature verification", () => {
-      const WEBHOOK_SECRET = "test-hmac-secret-hex";
-
-      function sign(body: string, secret: string): string {
-        return `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
-      }
+    describe("Bearer token authentication", () => {
+      const WEBHOOK_SECRET = "test-webhook-secret";
 
       beforeEach(() => {
-        vi.stubEnv("BTCPAY_WEBHOOK_SECRET", WEBHOOK_SECRET);
-        vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
+        vi.stubEnv("CRYPTO_WEBHOOK_SECRET", WEBHOOK_SECRET);
+        vi.stubEnv("CRYPTO_SERVICE_URL", "http://localhost:3100");
         setBillingDeps({
           processor: createMockProcessor(),
           creditLedger: new DrizzleLedger(db),
@@ -1300,64 +1302,54 @@ describe("billing routes", () => {
         });
       });
 
-      it("accepts request with valid HMAC signature", async () => {
+      it("accepts request with valid Bearer token", async () => {
         const body = JSON.stringify({
-          deliveryId: "del-hmac-1",
-          webhookId: "wh-hmac-1",
-          originalDeliveryId: "del-hmac-1",
-          isRedelivery: false,
-          type: "InvoiceCreated",
-          timestamp: 1700000001,
-          storeId: "store-1",
-          invoiceId: "inv-hmac-1",
+          chargeId: "chg-auth-1",
+          chain: "btc",
+          address: "bc1qtest1",
+          amountUsdCents: 2500,
+          status: "confirmed",
         });
-        const sig = sign(body, WEBHOOK_SECRET);
 
         const res = await billingRoutes.request("/crypto/webhook", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "BTCPAY-SIG": sig,
+            Authorization: `Bearer ${WEBHOOK_SECRET}`,
           },
           body,
         });
-        // Valid signature should reach handler; allow known business outcomes only.
+        // Valid auth should reach handler; allow known business outcomes only.
         expect([200, 400]).toContain(res.status);
       });
 
-      it("rejects request with invalid HMAC signature", async () => {
+      it("rejects request with invalid Bearer token", async () => {
         const body = JSON.stringify({
-          deliveryId: "del-hmac-2",
-          webhookId: "wh-hmac-2",
-          originalDeliveryId: "del-hmac-2",
-          isRedelivery: false,
-          type: "InvoiceCreated",
-          timestamp: 1700000002,
-          storeId: "store-1",
-          invoiceId: "inv-hmac-2",
+          chargeId: "chg-auth-2",
+          chain: "btc",
+          address: "bc1qtest2",
+          amountUsdCents: 2500,
+          status: "confirmed",
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "BTCPAY-SIG": "sha256=deadbeef",
+            Authorization: "Bearer wrong-secret",
           },
           body,
         });
         expect(res.status).toBe(401);
       });
 
-      it("rejects request with no BTCPAY-SIG header", async () => {
+      it("rejects request with no Authorization header", async () => {
         const body = JSON.stringify({
-          deliveryId: "del-none",
-          webhookId: "wh-none",
-          originalDeliveryId: "del-none",
-          isRedelivery: false,
-          type: "InvoiceCreated",
-          timestamp: 1700000003,
-          storeId: "store-1",
-          invoiceId: "inv-none",
+          chargeId: "chg-auth-3",
+          chain: "btc",
+          address: "bc1qtest3",
+          amountUsdCents: 2500,
+          status: "confirmed",
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {
@@ -1371,8 +1363,8 @@ describe("billing routes", () => {
 
     describe("IP allowlist", () => {
       beforeEach(() => {
-        vi.stubEnv("BTCPAY_WEBHOOK_ALLOWED_IPS", "203.0.113.5,203.0.113.6");
-        vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
+        vi.stubEnv("CRYPTO_WEBHOOK_ALLOWED_IPS", "203.0.113.5,203.0.113.6");
+        vi.stubEnv("CRYPTO_SERVICE_URL", "http://localhost:3100");
         setBillingDeps({
           processor: createMockProcessor(),
           creditLedger: new DrizzleLedger(db),
@@ -1400,14 +1392,11 @@ describe("billing routes", () => {
 
       it("rejects request from non-allowlisted IP", async () => {
         const body = JSON.stringify({
-          deliveryId: "del-ip",
-          webhookId: "wh-ip",
-          originalDeliveryId: "del-ip",
-          isRedelivery: false,
-          type: "InvoiceCreated",
-          timestamp: 1700000004,
-          storeId: "store-1",
-          invoiceId: "inv-ip",
+          chargeId: "chg-ip",
+          chain: "btc",
+          address: "bc1qtest-ip",
+          amountUsdCents: 2500,
+          status: "confirmed",
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {
@@ -1436,7 +1425,7 @@ describe("billing routes", () => {
       });
 
       it("returns 429 when IP is in penalty backoff", async () => {
-        vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
+        vi.stubEnv("CRYPTO_SERVICE_URL", "http://localhost:3100");
 
         // Use a real penalty repo but pre-seed a blocked entry
         const penaltyRepo = createTestSigPenaltyRepo(db);
@@ -1464,14 +1453,11 @@ describe("billing routes", () => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            deliveryId: "del-penalty",
-            webhookId: "wh-penalty",
-            originalDeliveryId: "del-penalty",
-            isRedelivery: false,
-            type: "InvoiceCreated",
-            timestamp: 1700000005,
-            storeId: "store-1",
-            invoiceId: "inv-penalty",
+            chargeId: "chg-penalty",
+            chain: "btc",
+            address: "bc1qtest-penalty",
+            amountUsdCents: 2500,
+            status: "confirmed",
           }),
         });
         expect(res.status).toBe(429);
@@ -1919,7 +1905,7 @@ describe("billing routes", () => {
           amountUsd: 10,
         }),
       });
-      // Not 403 — may be 503 (BTCPay not configured in tests) but not IDOR
+      // Not 403 — may be 503 (crypto not configured in tests) but not IDOR
       expect(res.status).not.toBe(403);
     });
   });

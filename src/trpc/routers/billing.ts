@@ -280,7 +280,7 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
-  /** Create a CryptoService charge. Returns on-chain address and chain for payment. */
+  /** Create a crypto payment charge via CryptoServiceClient. Returns chargeId and payment address. */
   cryptoCheckout: tenantProcedure
     .input(
       z.object({
@@ -289,18 +289,22 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { cryptoClient, cryptoChargeRepo } = deps();
-      if (!cryptoClient || !cryptoChargeRepo) {
+      const { cryptoClient, cryptoChargeRepo: chargeStore } = deps();
+      if (!cryptoClient || !chargeStore) {
         throw new TRPCError({
           code: "NOT_IMPLEMENTED",
           message: "Crypto payments not configured",
         });
       }
-      const amountUsd = input.amountUsd;
-      const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
-      const amountUsdCents = Math.round(amountUsd * 100);
-      await cryptoChargeRepo.create(charge.chargeId, tenant, amountUsdCents);
-      return { referenceId: charge.chargeId, address: charge.address, chain: charge.chain };
+      const result = await cryptoClient.createCharge({
+        chain: "btc",
+        amountUsd: input.amountUsd,
+        metadata: { tenant },
+      });
+      // Persist a pending charge record so the charge is visible and reconcilable
+      // even if the webhook is never delivered (network failure, key rotation, etc.).
+      await chargeStore.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
+      return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
     }),
 
   /** Create a Stripe Customer Portal session. Returns null url when processor lacks portal support. */

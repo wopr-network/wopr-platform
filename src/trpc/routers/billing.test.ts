@@ -393,7 +393,7 @@ describe("billingRouter", () => {
       await expect(caller.cryptoCheckout({ amountUsd: 0.01 })).rejects.toThrow();
     });
 
-    it("returns referenceId, address, chain on success", async () => {
+    it("returns referenceId and address on success", async () => {
       const mockCreateCharge = vi.fn().mockResolvedValue({
         chargeId: "charge-abc-123",
         address: "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
@@ -417,8 +417,7 @@ describe("billingRouter", () => {
 
       expect(result.referenceId).toBe("charge-abc-123");
       expect(result.address).toBe("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");
-      expect(result.chain).toBe("btc");
-      expect(mockCreateCharge).toHaveBeenCalledWith({ chain: "btc", amountUsd: 10 });
+      expect(mockCreateCharge).toHaveBeenCalledWith({ chain: "btc", amountUsd: 10, metadata: { tenant: "tenant-1" } });
       expect(mockCreate).toHaveBeenCalledWith("charge-abc-123", "tenant-1", 1000);
     });
   });
