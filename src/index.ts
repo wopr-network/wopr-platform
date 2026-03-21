@@ -797,11 +797,12 @@ if (process.env.NODE_ENV !== "test") {
         logger.info("Usage-based auto top-up wired into gateway (WOP-1084)");
       }
 
+      // ── Crypto billing deps (independent of Stripe webhook secret) ──
+      // Initialize before the stripeWebhookSecret check so /billing/crypto/* routes
+      // can be wired even when STRIPE_WEBHOOK_SECRET is not set.
+      const cryptoChargeRepo = process.env.CRYPTO_SERVICE_URL ? new DrizzleCryptoChargeRepository(getDb()) : undefined;
+
       if (stripeWebhookSecret) {
-        // Create crypto billing deps before tRPC router so both REST and tRPC can share them.
-        const cryptoChargeRepo = process.env.CRYPTO_SERVICE_URL
-          ? new DrizzleCryptoChargeRepository(getDb())
-          : undefined;
         let cryptoClient: import("@wopr-network/platform-core/billing").CryptoServiceClient | undefined;
         if (process.env.CRYPTO_SERVICE_URL) {
           const { CryptoServiceClient, loadCryptoConfig } = await import("@wopr-network/platform-core/billing");
@@ -853,6 +854,46 @@ if (process.env.NODE_ENV !== "test") {
           cryptoChargeRepo,
         });
         logger.info("REST billing routes initialized");
+      } else if (cryptoChargeRepo) {
+        // Stripe webhook secret not set but CRYPTO_SERVICE_URL is set: wire crypto-only
+        // billing deps so /billing/crypto/* routes work. Stripe-specific routes will throw
+        // at call time rather than silently returning 503.
+        setBillingDeps({
+          processor: {
+            name: "unconfigured",
+            supportsPortal: () => false,
+            createCheckoutSession: async () => {
+              throw new Error("Stripe not configured");
+            },
+            createPortalSession: async () => {
+              throw new Error("Stripe not configured");
+            },
+            handleWebhook: async () => {
+              throw new Error("Stripe not configured");
+            },
+            setupPaymentMethod: async () => {
+              throw new Error("Stripe not configured");
+            },
+            listPaymentMethods: async () => [],
+            detachPaymentMethod: async () => {},
+            charge: async () => {
+              throw new Error("Stripe not configured");
+            },
+            getCustomerEmail: async () => {
+              throw new Error("Stripe not configured");
+            },
+            updateCustomerEmail: async () => {},
+            listInvoices: async () => [],
+          },
+          creditLedger: getCreditLedger(),
+          meterAggregator,
+          sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
+          replayGuard: new DrizzleWebhookSeenRepository(getDb()),
+          cryptoReplayGuard: new DrizzleWebhookSeenRepository(getDb()),
+          affiliateRepo: getAffiliateRepo(),
+          cryptoChargeRepo,
+        });
+        logger.info("Crypto-only billing deps initialized (STRIPE_WEBHOOK_SECRET not set)");
       } else {
         logger.warn("STRIPE_WEBHOOK_SECRET not set — tRPC billing router and REST billing routes not initialized");
       }

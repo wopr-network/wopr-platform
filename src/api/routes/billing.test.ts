@@ -1113,22 +1113,25 @@ describe("billing routes", () => {
         cryptoReplayGuard: noOpReplayGuard,
       });
 
-      const res = await billingRoutes.request("/crypto/checkout", {
-        method: "POST",
-        headers: { ...authHeader, "Content-Type": "application/json" },
-        body: "not-json",
-      });
-
-      vi.unstubAllEnvs();
-      setBillingDeps({
-        processor: createMockProcessor(),
-        creditLedger: new DrizzleLedger(db),
-        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
-        sigPenaltyRepo: createTestSigPenaltyRepo(db),
-        affiliateRepo: new DrizzleAffiliateRepository(db),
-        replayGuard: noOpReplayGuard,
-        cryptoReplayGuard: noOpReplayGuard,
-      });
+      let res: Response;
+      try {
+        res = await billingRoutes.request("/crypto/checkout", {
+          method: "POST",
+          headers: { ...authHeader, "Content-Type": "application/json" },
+          body: "not-json",
+        });
+      } finally {
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new DrizzleLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
+        });
+      }
 
       expect(res.status).toBe(400);
     });
@@ -1234,30 +1237,33 @@ describe("billing routes", () => {
         cryptoReplayGuard: noOpReplayGuard,
       });
 
-      const res = await billingRoutes.request("/crypto/webhook", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          chargeId: "chg-001",
-          chain: "btc",
-          address: "bc1qtest",
-          amountUsdCents: 2500,
-          status: "confirmed",
-        }),
-      });
-
-      vi.unstubAllEnvs();
-      setBillingDeps({
-        processor: createMockProcessor(),
-        creditLedger: new DrizzleLedger(db),
-        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
-        sigPenaltyRepo: createTestSigPenaltyRepo(db),
-        affiliateRepo: new DrizzleAffiliateRepository(db),
-        replayGuard: noOpReplayGuard,
-        cryptoReplayGuard: noOpReplayGuard,
-      });
+      let res: Response;
+      try {
+        res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chargeId: "chg-001",
+            chain: "btc",
+            address: "bc1qtest",
+            amountUsdCents: 2500,
+            status: "confirmed",
+          }),
+        });
+      } finally {
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new DrizzleLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
+        });
+      }
 
       expect(res.status).toBe(503);
     });

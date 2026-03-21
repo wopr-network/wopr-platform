@@ -64,6 +64,10 @@ describe("integration: billing crypto routes", () => {
     });
   });
 
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
   });
