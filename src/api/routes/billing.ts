@@ -13,7 +13,6 @@ import {
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
-import { Credit } from "@wopr-network/platform-core/credits";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
 import type { IAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
@@ -423,7 +422,7 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
   try {
     const { tenant, amountUsd } = parsed.data;
     const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
-    const amountUsdCents = Credit.fromDollars(amountUsd).toCentsRounded();
+    const amountUsdCents = Math.round(amountUsd * 100);
     await chargeStore.create(charge.chargeId, tenant, amountUsdCents);
     return c.json({ referenceId: charge.chargeId, address: charge.address, chain: charge.chain });
   } catch (err) {

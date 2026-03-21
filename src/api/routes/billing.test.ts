@@ -1076,8 +1076,8 @@ describe("billing routes", () => {
   // -- POST /crypto/checkout -------------------------------------------------
 
   describe("POST /crypto/checkout", () => {
-    it("returns 503 when BTCPay not configured (no env vars)", async () => {
-      // By default in tests, BTCPAY_API_KEY and BTCPAY_BASE_URL are not set.
+    it("returns 503 when crypto service not configured (no env vars)", async () => {
+      // By default in tests, CRYPTO_SERVICE_URL is not set.
       const res = await billingRoutes.request("/crypto/checkout", {
         method: "POST",
         headers: { ...authHeader, "Content-Type": "application/json" },
@@ -1099,11 +1099,9 @@ describe("billing routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("returns 400 for invalid JSON body (when BTCPay is configured)", async () => {
-      // Configure BTCPay so that the JSON parsing path is reached
-      vi.stubEnv("BTCPAY_API_KEY", "test-key");
-      vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
-      vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
+    it("returns 400 for invalid JSON body (when crypto service is configured)", async () => {
+      // Configure crypto service so that the JSON parsing path is reached
+      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
@@ -1139,7 +1137,7 @@ describe("billing routes", () => {
   // -- POST /crypto/webhook --------------------------------------------------
 
   describe("POST /crypto/webhook", () => {
-    it("returns 503 when BTCPay not configured (no env vars)", async () => {
+    it("returns 503 when crypto service not configured (no env vars)", async () => {
       const res = await billingRoutes.request("/crypto/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1158,7 +1156,7 @@ describe("billing routes", () => {
       expect(res.status).toBe(503);
     });
 
-    it("does NOT require bearer auth (uses BTCPay signature)", async () => {
+    it("does NOT require bearer auth (uses crypto signature)", async () => {
       // Without bearer auth, it should NOT return 401.
       // It should return 503 (not configured) or some other non-401 status.
       const res = await billingRoutes.request("/crypto/webhook", {
@@ -1170,10 +1168,8 @@ describe("billing routes", () => {
       expect(res.status).not.toBe(401);
     });
 
-    it("returns 503 when BTCPAY_WEBHOOK_SECRET is not set but BTCPay is configured", async () => {
-      vi.stubEnv("BTCPAY_API_KEY", "test-key");
-      vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
-      vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
+    it("returns 503 when BTCPAY_WEBHOOK_SECRET is not set but crypto service is configured", async () => {
+      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new DrizzleLedger(db),
@@ -1225,9 +1221,7 @@ describe("billing routes", () => {
 
       beforeEach(() => {
         vi.stubEnv("BTCPAY_WEBHOOK_SECRET", WEBHOOK_SECRET);
-        vi.stubEnv("BTCPAY_API_KEY", "test-key");
-        vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
-        vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
+        vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
         setBillingDeps({
           processor: createMockProcessor(),
           creditLedger: new DrizzleLedger(db),
@@ -1325,9 +1319,7 @@ describe("billing routes", () => {
     describe("IP allowlist", () => {
       beforeEach(() => {
         vi.stubEnv("BTCPAY_WEBHOOK_ALLOWED_IPS", "203.0.113.5,203.0.113.6");
-        vi.stubEnv("BTCPAY_API_KEY", "test-key");
-        vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
-        vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
+        vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
         setBillingDeps({
           processor: createMockProcessor(),
           creditLedger: new DrizzleLedger(db),
@@ -1391,9 +1383,7 @@ describe("billing routes", () => {
       });
 
       it("returns 429 when IP is in penalty backoff", async () => {
-        vi.stubEnv("BTCPAY_API_KEY", "test-key");
-        vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
-        vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
+        vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
 
         // Use a real penalty repo but pre-seed a blocked entry
         const penaltyRepo = createTestSigPenaltyRepo(db);

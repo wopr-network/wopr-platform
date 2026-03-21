@@ -1,8 +1,8 @@
 /**
  * Integration tests for /api/billing/crypto/* routes.
  *
- * Tests BTCPay crypto payment routes through the full composed Hono app.
- * Uses in-memory PGlite and mocked BTCPay configuration.
+ * Tests crypto payment routes through the full composed Hono app.
+ * Uses in-memory PGlite and mocked crypto service configuration.
  */
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
@@ -76,7 +76,7 @@ describe("integration: billing crypto routes", () => {
   // -- POST /api/billing/crypto/checkout (503 when not configured) --------
 
   describe("POST /api/billing/crypto/checkout (not configured)", () => {
-    it("returns 503 when BTCPay env vars are not set", async () => {
+    it("returns 503 when crypto service env vars are not set", async () => {
       const res = await app.request("/api/billing/crypto/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -100,7 +100,7 @@ describe("integration: billing crypto routes", () => {
   // -- POST /api/billing/crypto/webhook (503 when not configured) ---------
 
   describe("POST /api/billing/crypto/webhook (not configured)", () => {
-    it("returns 503 when BTCPay is not configured", async () => {
+    it("returns 503 when crypto service is not configured", async () => {
       const res = await app.request("/api/billing/crypto/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,15 +119,13 @@ describe("integration: billing crypto routes", () => {
     });
   });
 
-  // -- Tests with BTCPay configured via env vars --------------------------
+  // -- Tests with crypto service configured via env vars --------------------------
 
-  describe("with BTCPAY_API_KEY and BTCPAY_BASE_URL set", () => {
+  describe("with CRYPTO_SERVICE_URL set", () => {
     const WEBHOOK_SECRET = "integration-test-webhook-secret";
 
     beforeEach(async () => {
-      vi.stubEnv("BTCPAY_API_KEY", "test-api-key-12345");
-      vi.stubEnv("BTCPAY_BASE_URL", "https://btcpay.example.com");
-      vi.stubEnv("BTCPAY_STORE_ID", "test-store-id");
+      vi.stubEnv("CRYPTO_SERVICE_URL", "https://crypto.example.com");
       vi.stubEnv("BTCPAY_WEBHOOK_SECRET", WEBHOOK_SECRET);
       // Re-init deps to pick up the env vars
       setBillingDeps({
@@ -253,9 +251,9 @@ describe("integration: billing crypto routes", () => {
         expect(res.status).not.toBe(403);
       });
 
-      it("does NOT require admin bearer auth (webhook uses BTCPay signature)", async () => {
+      it("does NOT require admin bearer auth (webhook uses crypto signature)", async () => {
         // Without bearer auth header, should NOT return 401 from bearer check.
-        // Missing BTCPAY-SIG → 401 from signature check, not from bearer auth.
+        // Missing BTCPAY-SIG → 401 from crypto signature check, not from bearer auth.
         const body = JSON.stringify({
           deliveryId: "del-no-auth",
           webhookId: "wh-no-auth",
@@ -272,7 +270,7 @@ describe("integration: billing crypto routes", () => {
           headers: { "Content-Type": "application/json" },
           body,
         });
-        // 401 is from missing BTCPAY-SIG, not from missing bearer token
+        // 401 is from missing BTCPAY-SIG crypto sig, not from missing bearer token
         expect(res.status).toBe(401);
       });
 

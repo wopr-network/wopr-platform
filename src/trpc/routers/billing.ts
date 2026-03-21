@@ -298,7 +298,7 @@ export const billingRouter = router({
       }
       const amountUsd = input.amountUsd;
       const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
-      const amountUsdCents = Credit.fromDollars(amountUsd).toCentsRounded();
+      const amountUsdCents = Math.round(amountUsd * 100);
       await cryptoChargeRepo.create(charge.chargeId, tenant, amountUsdCents);
       return { referenceId: charge.chargeId, address: charge.address, chain: charge.chain };
     }),
