@@ -290,7 +290,7 @@ export const billingRouter = router({
   }),
 
   /** Get the current status of a crypto charge by referenceId. */
-  chargeStatus: tenantProcedure.input(z.object({ referenceId: z.string().min(1) })).query(async ({ input }) => {
+  chargeStatus: tenantProcedure.input(z.object({ referenceId: z.string().min(1) })).query(async ({ input, ctx }) => {
     const { cryptoChargeRepo: chargeStore } = deps();
     if (!chargeStore) {
       throw new TRPCError({
@@ -302,7 +302,10 @@ export const billingRouter = router({
     if (!charge) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Charge not found" });
     }
-    return { ...charge, amountUsdCents: charge.amountExpectedCents };
+    if (charge.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+    }
+    return charge;
   }),
 
   /** Create a crypto payment charge via CryptoServiceClient. Returns chargeId and payment address. */

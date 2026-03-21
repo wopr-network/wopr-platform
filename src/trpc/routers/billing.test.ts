@@ -851,6 +851,7 @@ describe("billingRouter", () => {
       { name: "dividendLifetime", input: undefined },
       { name: "affiliateInfo", input: undefined },
       { name: "memberUsage", input: undefined },
+      { name: "chargeStatus", input: { referenceId: "charge-abc-123" } },
     ];
 
     const protectedMutations: Array<{ name: string; input: unknown }> = [
@@ -859,6 +860,7 @@ describe("billingRouter", () => {
         input: { priceId: "p", successUrl: "https://app.wopr.bot/a", cancelUrl: "https://app.wopr.bot/b" },
       },
       { name: "cryptoCheckout", input: { amountUsd: 10 } },
+      { name: "checkout", input: { chain: "btc", amountUsd: 10 } },
       { name: "portalSession", input: { returnUrl: "https://app.wopr.bot/a" } },
       {
         name: "updateSpendingLimits",
