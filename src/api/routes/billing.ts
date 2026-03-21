@@ -411,11 +411,11 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  if (!cryptoClient) {
+  const { cryptoChargeRepo: chargeStore } = getDeps();
+
+  if (!cryptoClient || !chargeStore) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
-
-  const { cryptoChargeRepo: chargeStore } = getDeps();
 
   try {
     const result = await cryptoClient.createCharge({
@@ -426,11 +426,7 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     // Persist a pending charge record so the charge is visible and reconcilable
     // even if the webhook is never delivered (network failure, key rotation, etc.).
     if (chargeStore) {
-      try {
-        await chargeStore.create(result.chargeId, parsed.data.tenant, Math.round(parsed.data.amountUsd * 100));
-      } catch (persistErr) {
-        logger.warn("Failed to persist crypto charge locally", { chargeId: result.chargeId, err: persistErr });
-      }
+      await chargeStore.create(result.chargeId, parsed.data.tenant, Math.round(parsed.data.amountUsd * 100));
     }
     return c.json({ chargeId: result.chargeId, address: result.address, referenceId: result.chargeId });
   } catch (err) {

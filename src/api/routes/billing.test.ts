@@ -1161,11 +1161,26 @@ describe("billing routes", () => {
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
       });
 
-      const res = await billingRoutes.request("/crypto/checkout", {
-        method: "POST",
-        headers: { ...authHeader, "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
-      });
+      let res: Response;
+      try {
+        res = await billingRoutes.request("/crypto/checkout", {
+          method: "POST",
+          headers: { ...authHeader, "Content-Type": "application/json" },
+          body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
+        });
+      } finally {
+        createChargeSpy.mockRestore();
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new DrizzleLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          cryptoReplayGuard: noOpReplayGuard,
+        });
+      }
 
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -1178,18 +1193,6 @@ describe("billing routes", () => {
       expect(persisted).not.toBeNull();
       expect(persisted?.tenantId).toBe("t-1");
       expect(persisted?.amountUsdCents).toBe(2500);
-
-      createChargeSpy.mockRestore();
-      vi.unstubAllEnvs();
-      setBillingDeps({
-        processor: createMockProcessor(),
-        creditLedger: new DrizzleLedger(db),
-        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
-        sigPenaltyRepo: createTestSigPenaltyRepo(db),
-        affiliateRepo: new DrizzleAffiliateRepository(db),
-        replayGuard: noOpReplayGuard,
-        cryptoReplayGuard: noOpReplayGuard,
-      });
     });
   });
 
