@@ -3,8 +3,7 @@ import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import type { ICryptoChargeRepository, IWebhookSeenRepository } from "@wopr-network/platform-core/billing";
 import {
-  BTCPayClient,
-  createCryptoCheckout,
+  CryptoServiceClient,
   handleCryptoWebhook,
   type IPaymentProcessor,
   loadCryptoConfig,
@@ -14,6 +13,7 @@ import {
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
 import type { IAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
@@ -106,7 +106,7 @@ const cryptoWebhookBodySchema = z.object({
 
 let _deps: BillingRouteDeps | null = null;
 
-let cryptoClient: BTCPayClient | null = null;
+let cryptoClient: CryptoServiceClient | null = null;
 
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
@@ -115,7 +115,7 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   // Crypto initialization (optional — only if env vars are set)
   const cryptoConfig = loadCryptoConfig();
   if (cryptoConfig) {
-    cryptoClient = new BTCPayClient(cryptoConfig);
+    cryptoClient = new CryptoServiceClient(cryptoConfig);
   } else {
     cryptoClient = null;
   }
@@ -421,8 +421,14 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
   }
 
   try {
-    const result = await createCryptoCheckout(cryptoClient, chargeStore, parsed.data);
-    return c.json({ url: result.url, referenceId: result.referenceId });
+    const { tenant, amountUsd } = parsed.data;
+    if (amountUsd < MIN_PAYMENT_USD) {
+      return c.json({ error: `Minimum payment amount is $${MIN_PAYMENT_USD}` }, 400);
+    }
+    const charge = await cryptoClient.createCharge({ chain: "btc", amountUsd });
+    const amountUsdCents = Credit.fromDollars(amountUsd).toCentsRounded();
+    await chargeStore.create(charge.chargeId, tenant, amountUsdCents);
+    return c.json({ referenceId: charge.chargeId, address: charge.address, chain: charge.chain });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
     return c.json({ error: message }, 500);
