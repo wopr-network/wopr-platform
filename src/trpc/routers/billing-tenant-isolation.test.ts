@@ -232,6 +232,7 @@ describe("billing tenant isolation (WOP-1406)", () => {
     { name: "dividendStats" },
     { name: "dividendHistory" },
     { name: "dividendLifetime" },
+    { name: "chargeStatus", input: { referenceId: "charge-other-tenant" } },
   ];
 
   // Mutations that must reject cross-tenant access

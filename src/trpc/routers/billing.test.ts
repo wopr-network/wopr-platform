@@ -424,6 +424,106 @@ describe("billingRouter", () => {
   });
 
   // -------------------------------------------------------------------------
+  // chargeStatus
+  // -------------------------------------------------------------------------
+
+  describe("chargeStatus", () => {
+    it("throws NOT_IMPLEMENTED when crypto not configured", async () => {
+      injectDeps({ cryptoChargeRepo: undefined });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.chargeStatus({ referenceId: "charge-abc" })).rejects.toThrow(
+        "Crypto payments not configured",
+      );
+    });
+
+    it("throws NOT_FOUND when charge does not exist", async () => {
+      injectDeps({
+        cryptoChargeRepo: {
+          get: vi.fn().mockResolvedValue(null),
+          getByReferenceId: vi.fn(),
+          create: vi.fn(),
+          updateStatus: vi.fn(),
+          updateProgress: vi.fn(),
+          markCredited: vi.fn(),
+          isCredited: vi.fn(),
+          createStablecoinCharge: vi.fn(),
+          getByDepositAddress: vi.fn(),
+          getNextDerivationIndex: vi.fn(),
+          listActiveDepositAddresses: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.chargeStatus({ referenceId: "missing-charge" })).rejects.toThrow("Charge not found");
+    });
+
+    it("throws FORBIDDEN when charge belongs to a different tenant (IDOR protection)", async () => {
+      injectDeps({
+        cryptoChargeRepo: {
+          get: vi.fn().mockResolvedValue({
+            id: "charge-other-tenant",
+            tenantId: "tenant-other",
+            chain: "btc",
+            status: "pending",
+            amountExpectedCents: 1000,
+            amountReceivedCents: 0,
+            confirmations: 0,
+            confirmationsRequired: 1,
+            txHash: undefined,
+            credited: false,
+            createdAt: new Date(),
+          }),
+          getByReferenceId: vi.fn(),
+          create: vi.fn(),
+          updateStatus: vi.fn(),
+          updateProgress: vi.fn(),
+          markCredited: vi.fn(),
+          isCredited: vi.fn(),
+          createStablecoinCharge: vi.fn(),
+          getByDepositAddress: vi.fn(),
+          getNextDerivationIndex: vi.fn(),
+          listActiveDepositAddresses: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.chargeStatus({ referenceId: "charge-other-tenant" })).rejects.toThrow("Access denied");
+    });
+
+    it("returns charge data when tenant matches", async () => {
+      const mockCharge = {
+        id: "charge-abc-123",
+        tenantId: "tenant-1",
+        chain: "btc",
+        status: "pending" as const,
+        amountExpectedCents: 1000,
+        amountReceivedCents: 0,
+        confirmations: 0,
+        confirmationsRequired: 1,
+        txHash: undefined,
+        credited: false,
+        createdAt: new Date(),
+      };
+      injectDeps({
+        cryptoChargeRepo: {
+          get: vi.fn().mockResolvedValue(mockCharge),
+          getByReferenceId: vi.fn(),
+          create: vi.fn(),
+          updateStatus: vi.fn(),
+          updateProgress: vi.fn(),
+          markCredited: vi.fn(),
+          isCredited: vi.fn(),
+          createStablecoinCharge: vi.fn(),
+          getByDepositAddress: vi.fn(),
+          getNextDerivationIndex: vi.fn(),
+          listActiveDepositAddresses: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.chargeStatus({ referenceId: "charge-abc-123" });
+      expect(result).toEqual(mockCharge);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // portalSession
   // -------------------------------------------------------------------------
 
