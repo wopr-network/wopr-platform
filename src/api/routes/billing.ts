@@ -91,7 +91,7 @@ const cryptoWebhookBodySchema = z.object({
   chargeId: z.string().min(1),
   chain: z.string().min(1),
   address: z.string().min(1),
-  amountUsdCents: z.number().int(),
+  amountUsdCents: z.number().int().min(0),
   status: z.string().min(1),
   txHash: z.string().optional(),
   amountReceived: z.string().optional(),

@@ -894,6 +894,56 @@ if (process.env.NODE_ENV !== "test") {
           cryptoChargeRepo,
         });
         logger.info("Crypto-only billing deps initialized (STRIPE_WEBHOOK_SECRET not set)");
+
+        // Wire tRPC billing router for crypto-only path so cryptoCheckout works.
+        let cryptoClientForTrpc: import("@wopr-network/platform-core/billing").CryptoServiceClient | undefined;
+        if (process.env.CRYPTO_SERVICE_URL) {
+          const { CryptoServiceClient, loadCryptoConfig } = await import("@wopr-network/platform-core/billing");
+          const cryptoConfig = loadCryptoConfig();
+          if (cryptoConfig) {
+            cryptoClientForTrpc = new CryptoServiceClient(cryptoConfig);
+          }
+        }
+        const stubProcessor: import("@wopr-network/platform-core/billing").IPaymentProcessor = {
+          name: "unconfigured",
+          supportsPortal: () => false,
+          createCheckoutSession: async () => {
+            throw new Error("Stripe not configured");
+          },
+          createPortalSession: async () => {
+            throw new Error("Stripe not configured");
+          },
+          handleWebhook: async () => {
+            throw new Error("Stripe not configured");
+          },
+          setupPaymentMethod: async () => {
+            throw new Error("Stripe not configured");
+          },
+          listPaymentMethods: async () => [],
+          detachPaymentMethod: async () => {},
+          charge: async () => {
+            throw new Error("Stripe not configured");
+          },
+          getCustomerEmail: async () => {
+            throw new Error("Stripe not configured");
+          },
+          updateCustomerEmail: async () => {},
+          listInvoices: async () => [],
+        };
+        setBillingRouterDeps({
+          processor: stubProcessor,
+          tenantRepo,
+          creditLedger: getCreditLedger(),
+          meterAggregator,
+          priceMap: undefined,
+          autoTopupSettingsStore,
+          dividendRepo: getDividendRepo(),
+          spendingLimitsRepo,
+          affiliateRepo: getAffiliateRepo(),
+          cryptoClient: cryptoClientForTrpc,
+          cryptoChargeRepo,
+        });
+        logger.info("tRPC billing router initialized (crypto-only)");
       } else {
         logger.warn("STRIPE_WEBHOOK_SECRET not set — tRPC billing router and REST billing routes not initialized");
       }

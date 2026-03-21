@@ -280,7 +280,7 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
-  /** Create a CryptoService charge. Returns on-chain address and chain for payment. */
+  /** Create a crypto payment charge via CryptoServiceClient. Returns chargeId and payment address. */
   cryptoCheckout: tenantProcedure
     .input(
       z.object({
