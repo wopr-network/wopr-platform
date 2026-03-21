@@ -280,7 +280,60 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
+  /** List supported crypto payment methods (chains). Public — no auth needed. */
+  supportedPaymentMethods: publicProcedure.query(async () => {
+    const { cryptoClient } = deps();
+    if (!cryptoClient) {
+      return [];
+    }
+    return cryptoClient.listChains();
+  }),
+
+  /** Get the current status of a crypto charge by referenceId. */
+  chargeStatus: tenantProcedure.input(z.object({ referenceId: z.string().min(1) })).query(async ({ input }) => {
+    const { cryptoChargeRepo: chargeStore } = deps();
+    if (!chargeStore) {
+      throw new TRPCError({
+        code: "NOT_IMPLEMENTED",
+        message: "Crypto payments not configured",
+      });
+    }
+    const charge = await chargeStore.get(input.referenceId);
+    if (!charge) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Charge not found" });
+    }
+    return { ...charge, amountUsdCents: charge.amountExpectedCents };
+  }),
+
   /** Create a crypto payment charge via CryptoServiceClient. Returns chargeId and payment address. */
+  checkout: tenantProcedure
+    .input(
+      z.object({
+        chain: z.string().min(1),
+        amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const tenant = ctx.tenantId;
+      const { cryptoClient, cryptoChargeRepo: chargeStore } = deps();
+      if (!cryptoClient || !chargeStore) {
+        throw new TRPCError({
+          code: "NOT_IMPLEMENTED",
+          message: "Crypto payments not configured",
+        });
+      }
+      const result = await cryptoClient.createCharge({
+        chain: input.chain,
+        amountUsd: input.amountUsd,
+        metadata: { tenant },
+      });
+      // Persist a pending charge record so the charge is visible and reconcilable
+      // even if the webhook is never delivered (network failure, key rotation, etc.).
+      await chargeStore.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
+      return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
+    }),
+
+  /** @deprecated Use checkout instead. Kept for backwards compatibility. */
   cryptoCheckout: tenantProcedure
     .input(
       z.object({
@@ -301,8 +354,6 @@ export const billingRouter = router({
         amountUsd: input.amountUsd,
         metadata: { tenant },
       });
-      // Persist a pending charge record so the charge is visible and reconcilable
-      // even if the webhook is never delivered (network failure, key rotation, etc.).
       await chargeStore.create(result.chargeId, tenant, Math.round(input.amountUsd * 100));
       return { chargeId: result.chargeId, address: result.address, referenceId: result.chargeId };
     }),

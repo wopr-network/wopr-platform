@@ -85,6 +85,7 @@ const detachPaymentMethodParamsSchema = z.object({
 const cryptoCheckoutBodySchema = z.object({
   tenant: tenantIdSchema,
   amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
+  chain: z.string().min(1).default("btc"),
 });
 
 const cryptoWebhookBodySchema = z.object({
@@ -96,6 +97,7 @@ const cryptoWebhookBodySchema = z.object({
   txHash: z.string().optional(),
   amountReceived: z.string().optional(),
   confirmations: z.number().int().optional(),
+  confirmationsRequired: z.number().int().optional(),
 });
 
 // -- Route factory ------------------------------------------------------------
@@ -419,7 +421,7 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
 
   try {
     const result = await cryptoClient.createCharge({
-      chain: "btc",
+      chain: parsed.data.chain,
       amountUsd: parsed.data.amountUsd,
       metadata: { tenant: parsed.data.tenant },
     });

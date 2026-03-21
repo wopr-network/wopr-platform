@@ -876,6 +876,9 @@ if (process.env.NODE_ENV !== "test") {
             },
             listPaymentMethods: async () => [],
             detachPaymentMethod: async () => {},
+            setDefaultPaymentMethod: async () => {
+              throw new Error("Stripe not configured");
+            },
             charge: async () => {
               throw new Error("Stripe not configured");
             },
@@ -921,6 +924,9 @@ if (process.env.NODE_ENV !== "test") {
           },
           listPaymentMethods: async () => [],
           detachPaymentMethod: async () => {},
+          setDefaultPaymentMethod: async () => {
+            throw new Error("Stripe not configured");
+          },
           charge: async () => {
             throw new Error("Stripe not configured");
           },
