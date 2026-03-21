@@ -1,57 +1,95 @@
 name: Dependabot Auto-Merge
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 jobs:
   auto-merge:
     runs-on: [self-hosted, Linux, X64]
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: write
       pull-requests: write
 
     steps:
-      - name: Get PR metadata
-        id: meta
-        uses: actions/github-script@v7
+      - name: Find dependabot PR
+        id: find-pr
+        uses: actions/github-script@v8
         with:
           script: |
-            const pr = context.payload.pull_request;
-            if (!pr) { core.setOutput('skip', 'true'); return; }
+            // Find the PR associated with this CI run
+            let prNumber;
+            const prs = context.payload.workflow_run.pull_requests;
 
-            const { data: details } = await github.rest.pulls.get({
+            if (prs && prs.length > 0) {
+              prNumber = prs[0].number;
+            } else {
+              // Fallback: search by head branch
+              const branch = context.payload.workflow_run.head_branch;
+              if (!branch || branch === 'main' || branch === 'staging') {
+                core.setOutput('skip', 'true');
+                return;
+              }
+
+              const { data: pulls } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branch}`,
+                state: 'open',
+              });
+
+              if (pulls.length === 0) {
+                core.setOutput('skip', 'true');
+                return;
+              }
+              prNumber = pulls[0].number;
+            }
+
+            // Verify it's from dependabot
+            const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: pr.number,
+              pull_number: prNumber,
             });
 
-            // Only auto-merge patch and minor updates (not major)
-            const title = details.title;
+            if (pr.user.login !== 'dependabot[bot]') {
+              core.setOutput('skip', 'true');
+              return;
+            }
+
+            // Skip major version bumps
+            const title = pr.title;
             const fromMajor = title.match(/from (\d+)\.\d/)?.[1];
             const toMajor = title.match(/to (\d+)\.\d/)?.[1];
             const isMajor = fromMajor !== undefined &&
               toMajor !== undefined &&
               fromMajor !== toMajor;
 
-            core.setOutput('skip', isMajor ? 'true' : 'false');
-            core.setOutput('pr_number', String(pr.number));
+            if (isMajor) {
+              core.setOutput('skip', 'true');
+              core.info(`Skipping major version bump: ${title}`);
+              return;
+            }
+
+            core.setOutput('skip', 'false');
+            core.setOutput('pr_number', String(prNumber));
 
       - name: Approve PR
-        if: steps.meta.outputs.skip != 'true'
-        uses: actions/github-script@v7
+        if: steps.find-pr.outputs.skip != 'true'
+        uses: actions/github-script@v8
         with:
           script: |
             await github.rest.pulls.createReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: parseInt('${{ steps.meta.outputs.pr_number }}'),
+              pull_number: parseInt('${{ steps.find-pr.outputs.pr_number }}'),
               event: 'APPROVE',
             });
 
       - name: Enable auto-merge
-        if: steps.meta.outputs.skip != 'true'
+        if: steps.find-pr.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr merge --auto --squash ${{ steps.meta.outputs.pr_number }} --repo ${{ github.repository }}
+        run: gh pr merge --auto --squash ${{ steps.find-pr.outputs.pr_number }} --repo ${{ github.repository }}
