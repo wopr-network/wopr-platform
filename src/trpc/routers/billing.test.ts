@@ -92,6 +92,7 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
     charge: vi.fn().mockResolvedValue({ success: true }),
     getCustomerEmail: vi.fn().mockResolvedValue(""),
     updateCustomerEmail: vi.fn().mockResolvedValue(undefined),
+    setDefaultPaymentMethod: vi.fn().mockResolvedValue(undefined),
     listInvoices: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
@@ -403,11 +404,12 @@ describe("billingRouter", () => {
         derivationIndex: 0,
         expiresAt: new Date().toISOString(),
       });
-      const mockCreate = vi.fn().mockResolvedValue(undefined);
+      const mockCreateStablecoinCharge = vi.fn().mockResolvedValue(undefined);
       injectDeps({
         cryptoClient: { createCharge: mockCreateCharge } as unknown as CryptoServiceClient,
         cryptoChargeRepo: {
-          create: mockCreate,
+          create: vi.fn(),
+          createStablecoinCharge: mockCreateStablecoinCharge,
           getByReferenceId: vi.fn(),
           updateStatus: vi.fn(),
         } as unknown as ICryptoChargeRepository,
@@ -418,7 +420,170 @@ describe("billingRouter", () => {
       expect(result.referenceId).toBe("charge-abc-123");
       expect(result.address).toBe("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");
       expect(mockCreateCharge).toHaveBeenCalledWith({ chain: "btc", amountUsd: 10, metadata: { tenant: "tenant-1" } });
-      expect(mockCreate).toHaveBeenCalledWith("charge-abc-123", "tenant-1", 1000);
+      expect(mockCreateStablecoinCharge).toHaveBeenCalledWith({
+        referenceId: "charge-abc-123",
+        tenantId: "tenant-1",
+        amountUsdCents: 1000,
+        chain: "btc",
+        token: "BTC",
+        depositAddress: "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
+        derivationIndex: 0,
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // checkout
+  // -------------------------------------------------------------------------
+
+  describe("checkout", () => {
+    it("throws NOT_IMPLEMENTED when crypto not configured", async () => {
+      injectDeps({ cryptoClient: undefined, cryptoChargeRepo: undefined });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.checkout({ chain: "eth", amountUsd: 10 })).rejects.toThrow("Crypto payments not configured");
+    });
+
+    it("rejects amount below minimum", async () => {
+      injectDeps();
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.checkout({ chain: "eth", amountUsd: 0.01 })).rejects.toThrow();
+    });
+
+    it("persists chain and returns chargeId/address on success", async () => {
+      const mockCreateCharge = vi.fn().mockResolvedValue({
+        chargeId: "charge-eth-456",
+        address: "0xdeadbeef",
+        chain: "eth",
+        token: "USDC",
+        amountUsd: 50,
+        derivationIndex: 3,
+        expiresAt: new Date().toISOString(),
+      });
+      const mockCreateStablecoinCharge = vi.fn().mockResolvedValue(undefined);
+      injectDeps({
+        cryptoClient: { createCharge: mockCreateCharge } as unknown as CryptoServiceClient,
+        cryptoChargeRepo: {
+          create: vi.fn(),
+          createStablecoinCharge: mockCreateStablecoinCharge,
+          getByReferenceId: vi.fn(),
+          updateStatus: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.checkout({ chain: "eth", amountUsd: 50 });
+
+      expect(result.referenceId).toBe("charge-eth-456");
+      expect(result.address).toBe("0xdeadbeef");
+      expect(mockCreateCharge).toHaveBeenCalledWith({ chain: "eth", amountUsd: 50, metadata: { tenant: "tenant-1" } });
+      expect(mockCreateStablecoinCharge).toHaveBeenCalledWith({
+        referenceId: "charge-eth-456",
+        tenantId: "tenant-1",
+        amountUsdCents: 5000,
+        chain: "eth",
+        token: "USDC",
+        depositAddress: "0xdeadbeef",
+        derivationIndex: 3,
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // chargeStatus
+  // -------------------------------------------------------------------------
+
+  describe("chargeStatus", () => {
+    it("throws NOT_IMPLEMENTED when crypto not configured", async () => {
+      injectDeps({ cryptoChargeRepo: undefined });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.chargeStatus({ referenceId: "charge-abc" })).rejects.toThrow(
+        "Crypto payments not configured",
+      );
+    });
+
+    it("throws NOT_FOUND when charge does not exist", async () => {
+      injectDeps({
+        cryptoChargeRepo: {
+          get: vi.fn().mockResolvedValue(null),
+          getByReferenceId: vi.fn(),
+          create: vi.fn(),
+          updateStatus: vi.fn(),
+          updateProgress: vi.fn(),
+          markCredited: vi.fn(),
+          isCredited: vi.fn(),
+          createStablecoinCharge: vi.fn(),
+          getByDepositAddress: vi.fn(),
+          getNextDerivationIndex: vi.fn(),
+          listActiveDepositAddresses: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.chargeStatus({ referenceId: "missing-charge" })).rejects.toThrow("Charge not found");
+    });
+
+    it("throws FORBIDDEN when charge belongs to a different tenant (IDOR protection)", async () => {
+      injectDeps({
+        cryptoChargeRepo: {
+          get: vi.fn(),
+          getByReferenceId: vi.fn().mockResolvedValue({
+            id: "charge-other-tenant",
+            tenantId: "tenant-other",
+            chain: "btc",
+            status: "pending",
+            amountExpectedCents: 1000,
+            amountReceivedCents: 0,
+            confirmations: 0,
+            confirmationsRequired: 1,
+            txHash: undefined,
+            credited: false,
+            createdAt: new Date(),
+          }),
+          create: vi.fn(),
+          updateStatus: vi.fn(),
+          updateProgress: vi.fn(),
+          markCredited: vi.fn(),
+          isCredited: vi.fn(),
+          createStablecoinCharge: vi.fn(),
+          getByDepositAddress: vi.fn(),
+          getNextDerivationIndex: vi.fn(),
+          listActiveDepositAddresses: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      await expect(caller.chargeStatus({ referenceId: "charge-other-tenant" })).rejects.toThrow("Access denied");
+    });
+
+    it("returns charge data when tenant matches", async () => {
+      const mockCharge = {
+        id: "charge-abc-123",
+        tenantId: "tenant-1",
+        chain: "btc",
+        status: "pending" as const,
+        amountExpectedCents: 1000,
+        amountReceivedCents: 0,
+        confirmations: 0,
+        confirmationsRequired: 1,
+        txHash: undefined,
+        credited: false,
+        createdAt: new Date(),
+      };
+      injectDeps({
+        cryptoChargeRepo: {
+          get: vi.fn(),
+          getByReferenceId: vi.fn().mockResolvedValue(mockCharge),
+          create: vi.fn(),
+          updateStatus: vi.fn(),
+          updateProgress: vi.fn(),
+          markCredited: vi.fn(),
+          isCredited: vi.fn(),
+          createStablecoinCharge: vi.fn(),
+          getByDepositAddress: vi.fn(),
+          getNextDerivationIndex: vi.fn(),
+          listActiveDepositAddresses: vi.fn(),
+        } as unknown as ICryptoChargeRepository,
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.chargeStatus({ referenceId: "charge-abc-123" });
+      expect(result).toEqual(mockCharge);
     });
   });
 
@@ -850,6 +1015,7 @@ describe("billingRouter", () => {
       { name: "dividendLifetime", input: undefined },
       { name: "affiliateInfo", input: undefined },
       { name: "memberUsage", input: undefined },
+      { name: "chargeStatus", input: { referenceId: "charge-abc-123" } },
     ];
 
     const protectedMutations: Array<{ name: string; input: unknown }> = [
@@ -858,6 +1024,7 @@ describe("billingRouter", () => {
         input: { priceId: "p", successUrl: "https://app.wopr.bot/a", cancelUrl: "https://app.wopr.bot/b" },
       },
       { name: "cryptoCheckout", input: { amountUsd: 10 } },
+      { name: "checkout", input: { chain: "btc", amountUsd: 10 } },
       { name: "portalSession", input: { returnUrl: "https://app.wopr.bot/a" } },
       {
         name: "updateSpendingLimits",

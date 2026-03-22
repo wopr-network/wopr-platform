@@ -85,6 +85,7 @@ const detachPaymentMethodParamsSchema = z.object({
 const cryptoCheckoutBodySchema = z.object({
   tenant: tenantIdSchema,
   amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
+  chain: z.string().min(1).default("btc"),
 });
 
 const cryptoWebhookBodySchema = z.object({
@@ -95,7 +96,8 @@ const cryptoWebhookBodySchema = z.object({
   status: z.string().min(1),
   txHash: z.string().optional(),
   amountReceived: z.string().optional(),
-  confirmations: z.number().int().optional(),
+  confirmations: z.number().int().nonnegative().optional(),
+  confirmationsRequired: z.number().int().nonnegative().optional(),
 });
 
 // -- Route factory ------------------------------------------------------------
@@ -419,13 +421,23 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
 
   try {
     const result = await cryptoClient.createCharge({
-      chain: "btc",
+      chain: parsed.data.chain,
       amountUsd: parsed.data.amountUsd,
       metadata: { tenant: parsed.data.tenant },
     });
     // Persist a pending charge record so the charge is visible and reconcilable
     // even if the webhook is never delivered (network failure, key rotation, etc.).
-    await chargeStore.create(result.chargeId, parsed.data.tenant, Math.round(parsed.data.amountUsd * 100));
+    // Use createStablecoinCharge to store the selected chain from the start so
+    // chargeStatus can return the network immediately without waiting for a webhook.
+    await chargeStore.createStablecoinCharge({
+      referenceId: result.chargeId,
+      tenantId: parsed.data.tenant,
+      amountUsdCents: Math.round(parsed.data.amountUsd * 100),
+      chain: result.chain,
+      token: result.token,
+      depositAddress: result.address,
+      derivationIndex: result.derivationIndex,
+    });
     return c.json({ chargeId: result.chargeId, address: result.address, referenceId: result.chargeId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";

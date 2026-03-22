@@ -79,6 +79,7 @@ function createMockProcessor(
     charge: (overrides.charge ?? vi.fn().mockResolvedValue({ success: true })) as IPaymentProcessor["charge"],
     getCustomerEmail: vi.fn().mockResolvedValue("") as IPaymentProcessor["getCustomerEmail"],
     updateCustomerEmail: vi.fn().mockResolvedValue(undefined) as IPaymentProcessor["updateCustomerEmail"],
+    setDefaultPaymentMethod: vi.fn().mockResolvedValue(undefined) as IPaymentProcessor["setDefaultPaymentMethod"],
     listInvoices: vi.fn().mockResolvedValue([]) as IPaymentProcessor["listInvoices"],
   };
 }
@@ -1193,6 +1194,8 @@ describe("billing routes", () => {
       expect(persisted).not.toBeNull();
       expect(persisted?.tenantId).toBe("t-1");
       expect(persisted?.amountUsdCents).toBe(2500);
+      // Verify chain is persisted immediately (not deferred to webhook)
+      expect(persisted?.chain).toBe("btc");
     });
   });
 

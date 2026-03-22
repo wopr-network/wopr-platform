@@ -86,6 +86,7 @@ function createMockProcessor(): IPaymentProcessor {
     charge: vi.fn().mockResolvedValue({ success: true }),
     getCustomerEmail: vi.fn().mockResolvedValue(""),
     updateCustomerEmail: vi.fn().mockResolvedValue(undefined),
+    setDefaultPaymentMethod: vi.fn().mockResolvedValue(undefined),
     listInvoices: vi.fn().mockResolvedValue([]),
   };
 }
@@ -231,6 +232,7 @@ describe("billing tenant isolation (WOP-1406)", () => {
     { name: "dividendStats" },
     { name: "dividendHistory" },
     { name: "dividendLifetime" },
+    { name: "chargeStatus", input: { referenceId: "charge-other-tenant" } },
   ];
 
   // Mutations that must reject cross-tenant access
@@ -249,6 +251,7 @@ describe("billing tenant isolation (WOP-1406)", () => {
       input: { priceId: "p", successUrl: "https://app.wopr.bot/a", cancelUrl: "https://app.wopr.bot/b" },
     },
     { name: "cryptoCheckout", input: { amountUsd: 10 } },
+    { name: "checkout", input: { chain: "btc", amountUsd: 10 } },
     { name: "portalSession", input: { returnUrl: "https://app.wopr.bot/a" } },
     { name: "applyCoupon", input: { code: "FREE100" } },
   ];
