@@ -523,7 +523,8 @@ describe("billingRouter", () => {
     it("throws FORBIDDEN when charge belongs to a different tenant (IDOR protection)", async () => {
       injectDeps({
         cryptoChargeRepo: {
-          get: vi.fn().mockResolvedValue({
+          get: vi.fn(),
+          getByReferenceId: vi.fn().mockResolvedValue({
             id: "charge-other-tenant",
             tenantId: "tenant-other",
             chain: "btc",
@@ -536,7 +537,6 @@ describe("billingRouter", () => {
             credited: false,
             createdAt: new Date(),
           }),
-          getByReferenceId: vi.fn(),
           create: vi.fn(),
           updateStatus: vi.fn(),
           updateProgress: vi.fn(),
@@ -568,8 +568,8 @@ describe("billingRouter", () => {
       };
       injectDeps({
         cryptoChargeRepo: {
-          get: vi.fn().mockResolvedValue(mockCharge),
-          getByReferenceId: vi.fn(),
+          get: vi.fn(),
+          getByReferenceId: vi.fn().mockResolvedValue(mockCharge),
           create: vi.fn(),
           updateStatus: vi.fn(),
           updateProgress: vi.fn(),
