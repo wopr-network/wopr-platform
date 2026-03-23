@@ -112,8 +112,7 @@ describe("integration: fleet routes", () => {
     it("creates a bot with valid payload", async () => {
       fleetMock.create.mockResolvedValue({
         id: BOT_1,
-        name: "test-bot",
-        image: "ghcr.io/wopr-network/wopr:stable",
+        profile: { name: "test-bot", tenantId: "user-123" },
       });
 
       const res = await app.request("/fleet/bots", {
@@ -172,9 +171,7 @@ describe("integration: fleet routes", () => {
     it("accepts valid named Docker volume", async () => {
       fleetMock.create.mockResolvedValue({
         id: "new-bot",
-        name: "bot",
-        image: "ghcr.io/wopr-network/wopr:stable",
-        volumeName: "my-data-vol",
+        profile: { name: "bot", tenantId: "user-123" },
       });
 
       const res = await app.request("/fleet/bots", {

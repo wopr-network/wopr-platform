@@ -65,19 +65,10 @@ const mockProfile = {
   updatePolicy: "manual" as const,
 };
 
-/** Instance-shaped mock returned by fleet.create() — has nested .profile like the real Instance class. */
-const mockCreatedInstance = {
+/** Instance shape returned by fleet.create() — id + nested BotProfile under .profile. */
+const mockInstanceResult = {
   id: TEST_BOT_ID,
-  profile: {
-    name: "test-bot",
-    tenantId: "test-tenant",
-    description: "A test bot",
-    image: "ghcr.io/wopr-network/wopr:stable",
-    env: {},
-    restartPolicy: "unless-stopped" as const,
-    releaseChannel: "stable" as const,
-    updatePolicy: "manual" as const,
-  },
+  profile: mockProfile,
 };
 
 const mockStatus = {
@@ -138,7 +129,7 @@ function createFleetMock() {
     mockInstance,
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
-    create: vi.fn().mockResolvedValue(mockCreatedInstance),
+    create: vi.fn().mockResolvedValue(mockInstanceResult),
     update: vi.fn().mockResolvedValue(mockProfile),
     getInstance: vi.fn().mockResolvedValue(mockInstance),
     restart: vi.fn().mockResolvedValue(undefined),
@@ -320,7 +311,11 @@ describe("fleet.createInstance", () => {
     const result = await caller.fleet.createInstance(createInput);
     expect(result).toEqual({ id: TEST_BOT_ID, name: "test-bot", tenantId: "test-tenant" });
     expect(fleetMock.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "new-bot", tenantId: "test-tenant", volumeName: "wopr-data-new-bot" }),
+      expect.objectContaining({
+        name: "new-bot",
+        tenantId: "test-tenant",
+        volumeName: "wopr-data-test-tenant-new-bot",
+      }),
     );
   });
 
