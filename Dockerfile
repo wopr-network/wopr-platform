@@ -27,6 +27,9 @@ FROM node:24-bookworm-slim AS build
 
 ARG PNPM_VERSION
 
+# Build tools needed for native modules (better-sqlite3 via @wopr-network/wopr)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
@@ -62,6 +65,8 @@ COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 
 # WOPR daemon binary — wrapper script with absolute path
 # (pnpm's .bin scripts use $basedir-relative paths that break outside node_modules)
+# Path corresponds to the "wopr" bin entry in @wopr-network/wopr/package.json → dist/cli.js
+# If the package changes its compiled output path, update this line accordingly.
 RUN printf '#!/bin/sh\nexec node /app/node_modules/@wopr-network/wopr/dist/cli.js "$@"\n' > /usr/local/bin/wopr \
     && chmod +x /usr/local/bin/wopr
 
