@@ -67,6 +67,9 @@ COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 # (pnpm's .bin scripts use $basedir-relative paths that break outside node_modules)
 # Path corresponds to the "wopr" bin entry in @wopr-network/wopr/package.json → dist/cli.js
 # If the package changes its compiled output path, update this line accordingly.
+# Fail at build time if the expected CLI path is missing (catches upstream layout changes).
+RUN test -f /app/node_modules/@wopr-network/wopr/dist/cli.js \
+    || (echo "ERROR: @wopr-network/wopr dist/cli.js not found — update wrapper path in Dockerfile" >&2 && exit 1)
 RUN printf '#!/bin/sh\nexec node /app/node_modules/@wopr-network/wopr/dist/cli.js "$@"\n' > /usr/local/bin/wopr \
     && chmod +x /usr/local/bin/wopr
 
