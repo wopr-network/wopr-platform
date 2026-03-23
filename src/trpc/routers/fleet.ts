@@ -232,8 +232,8 @@ export const fleetRouter = router({
 
       return {
         id: profile.id,
-        name: profile.name,
-        tenantId: profile.tenantId,
+        name: profile.profile.name,
+        tenantId: profile.profile.tenantId,
         ...(gatewayKey ? { gatewayKey } : {}),
       };
     } catch (err) {
