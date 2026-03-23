@@ -88,7 +88,7 @@ const fleetMock = {
     };
     createdBots.set(profile.id, profile);
     botRunningState.set(profile.id, false);
-    return profile;
+    return { id: profile.id, profile };
   }),
   getInstance: vi.fn().mockImplementation(async (id: string) => {
     if (!createdBots.has(id)) throw new MockBotNotFoundError(id);

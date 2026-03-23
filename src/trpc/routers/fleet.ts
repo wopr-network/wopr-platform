@@ -138,95 +138,113 @@ export const fleetRouter = router({
   }),
 
   /** Create a new bot instance. Uses the existing createBotSchema from fleet/types.ts. */
-  createInstance: tenantProcedure.input(createBotSchema.omit({ tenantId: true })).mutation(async ({ input, ctx }) => {
-    const { getFleetManager, getCreditLedger } = deps();
-    const fleet = getFleetManager();
+  createInstance: tenantProcedure
+    .input(createBotSchema.omit({ tenantId: true }))
+    .output(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        tenantId: z.string(),
+        gatewayKey: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { getFleetManager, getCreditLedger } = deps();
+      const fleet = getFleetManager();
 
-    // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
-    try {
-      const ledger = getCreditLedger();
-      if (ledger) {
-        const balance = await ledger.balance(ctx.tenantId);
-        if (balance.lessThan(Credit.fromCents(17))) {
-          throw new TRPCError({
-            code: "PAYMENT_REQUIRED",
-            message: "Insufficient credits",
-            cause: { balance, required: 17, buyUrl: "/dashboard/credits" },
-          });
-        }
-
-        // Quota check: count active instances for this tenant
-        const allProfiles = await fleet.profiles.list();
-        const activeInstances = allProfiles.filter((p) => p.tenantId === ctx.tenantId).length;
-        const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
-        if (!quotaResult.allowed) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: quotaResult.reason ?? "Instance quota exceeded",
-            cause: {
-              currentInstances: quotaResult.currentInstances,
-              maxInstances: quotaResult.maxInstances,
-            },
-          });
-        }
-      }
-    } catch (err) {
-      if (err instanceof TRPCError) throw err;
-      // Billing DB unavailable (e.g., in tests) — skip quota enforcement
-    }
-
-    // Placement: find best node for this bot
-    let nodeId: string | undefined;
-    try {
-      const nodeRepo = deps().getNodeRepo?.();
-      if (nodeRepo) {
-        const activeNodes = await nodeRepo.list(["active"]);
-        const resourceLimits = buildResourceLimits();
-        const requiredMb = resourceLimits.Memory ? Math.ceil(resourceLimits.Memory / (1024 * 1024)) : 100;
-        const placement = findPlacement(activeNodes, requiredMb);
-        if (!placement) {
-          throw new TRPCError({
-            code: "SERVICE_UNAVAILABLE",
-            message: "No node has sufficient capacity",
-          });
-        }
-        nodeId = placement.nodeId;
-      }
-    } catch (err) {
-      if (err instanceof TRPCError) throw err;
-      // Re-throw unexpected errors (DB failures, network errors, etc.)
-      // Only silently skip when nodeRepo is simply not wired (getNodeRepo?.() returned null/undefined above)
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: err instanceof Error ? err.message : "Placement failed",
-        cause: err,
-      });
-    }
-
-    try {
-      const profile = await fleet.create({ ...input, tenantId: ctx.tenantId, nodeId });
-
-      // Generate a per-instance gateway service key for metered inference.
-      // Failures must not block instance creation — the key can be regenerated later.
-      let gatewayKey: string | undefined;
+      // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
       try {
-        const keyRepo = deps().getServiceKeyRepo?.();
-        if (keyRepo) {
-          gatewayKey = await keyRepo.generate(ctx.tenantId, profile.id);
+        const ledger = getCreditLedger();
+        if (ledger) {
+          const balance = await ledger.balance(ctx.tenantId);
+          if (balance.lessThan(Credit.fromCents(17))) {
+            throw new TRPCError({
+              code: "PAYMENT_REQUIRED",
+              message: "Insufficient credits",
+              cause: { balance, required: 17, buyUrl: "/dashboard/credits" },
+            });
+          }
         }
-      } catch {
-        // Key generation failed — instance is still usable, just without gateway access
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        // Billing DB unavailable (e.g., in tests) — skip balance enforcement
       }
 
-      return { ...profile, ...(gatewayKey ? { gatewayKey } : {}) };
-    } catch (err) {
-      if (err instanceof TRPCError) throw err;
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: err instanceof Error ? err.message : "Failed to create bot",
-      });
-    }
-  }),
+      // Quota check: count active instances for this tenant (hard-fail on repository errors)
+      const allProfiles = await fleet.profiles.list();
+      const activeInstances = allProfiles.filter((p) => p.tenantId === ctx.tenantId).length;
+      const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
+      if (!quotaResult.allowed) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: quotaResult.reason ?? "Instance quota exceeded",
+          cause: {
+            currentInstances: quotaResult.currentInstances,
+            maxInstances: quotaResult.maxInstances,
+          },
+        });
+      }
+
+      // Placement: find best node for this bot
+      let nodeId: string | undefined;
+      try {
+        const nodeRepo = deps().getNodeRepo?.();
+        if (nodeRepo) {
+          const activeNodes = await nodeRepo.list(["active"]);
+          const resourceLimits = buildResourceLimits();
+          const requiredMb = resourceLimits.Memory ? Math.ceil(resourceLimits.Memory / (1024 * 1024)) : 100;
+          const placement = findPlacement(activeNodes, requiredMb);
+          if (!placement) {
+            throw new TRPCError({
+              code: "SERVICE_UNAVAILABLE",
+              message: "No node has sufficient capacity",
+            });
+          }
+          nodeId = placement.nodeId;
+        }
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        // Re-throw unexpected errors (DB failures, network errors, etc.)
+        // Only silently skip when nodeRepo is simply not wired (getNodeRepo?.() returned null/undefined above)
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Placement failed",
+          cause: err,
+        });
+      }
+
+      try {
+        // Auto-generate a data volume name if not provided — ensures /data is writable
+        const volumeName = input.volumeName ?? `wopr-data-${input.name.replace(/[^a-z0-9-]/g, "-")}`;
+        const profile = await fleet.create({ ...input, tenantId: ctx.tenantId, nodeId, volumeName });
+
+        // Generate a per-instance gateway service key for metered inference.
+        // Failures must not block instance creation — the key can be regenerated later.
+        let gatewayKey: string | undefined;
+        try {
+          const keyRepo = deps().getServiceKeyRepo?.();
+          if (keyRepo) {
+            gatewayKey = await keyRepo.generate(ctx.tenantId, profile.id);
+          }
+        } catch {
+          // Key generation failed — instance is still usable, just without gateway access
+        }
+
+        return {
+          id: profile.id,
+          name: profile.profile.name,
+          tenantId: profile.profile.tenantId,
+          ...(gatewayKey ? { gatewayKey } : {}),
+        };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create bot",
+          cause: err,
+        });
+      }
+    }),
 
   /** Control a bot instance: start, stop, or restart. */
   controlInstance: tenantProcedure

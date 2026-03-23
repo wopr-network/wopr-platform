@@ -37,6 +37,15 @@ const mockProfile: BotProfile = {
   updatePolicy: "manual",
 };
 
+/** Instance-shaped mock returned by fleet.create() */
+const mockInstance = {
+  id: TEST_BOT_ID,
+  containerId: "container-123",
+  containerName: "wopr-test-bot",
+  url: "http://localhost:3001",
+  profile: mockProfile,
+};
+
 const mockStatus: BotStatus = {
   id: TEST_BOT_ID,
   name: "test-bot",
@@ -310,7 +319,7 @@ describe("fleet routes", () => {
 
   describe("POST /fleet/bots", () => {
     it("creates a bot with valid input", async () => {
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
 
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -329,7 +338,7 @@ describe("fleet routes", () => {
     });
 
     it("generates a gateway service key on create and returns it in the response", async () => {
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
       mockServiceKeyRepo.generate.mockResolvedValue("gw-key-xyz");
 
       const res = await app.request("/fleet/bots", {
@@ -349,7 +358,7 @@ describe("fleet routes", () => {
     });
 
     it("still returns 201 if gateway key generation fails", async () => {
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
       mockServiceKeyRepo.generate.mockRejectedValue(new Error("DB down"));
 
       const res = await app.request("/fleet/bots", {
@@ -368,7 +377,7 @@ describe("fleet routes", () => {
     });
 
     it("passes resource limits to fleet.create() based on tenant tier", async () => {
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
 
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -463,7 +472,7 @@ describe("fleet routes", () => {
     });
 
     it("returns 201 even when billing registration rejects", async () => {
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
       const registerBotMock = vi.fn().mockRejectedValueOnce(new Error("billing unavailable"));
       setFleetDeps({
         creditLedger: creditLedgerMock as never,
@@ -548,7 +557,7 @@ describe("fleet routes", () => {
     it("allows bot creation when tenant has positive credit balance", async () => {
       creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(1000));
       fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
 
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -567,7 +576,7 @@ describe("fleet routes", () => {
     it("allows bot creation for new tenant with positive balance", async () => {
       creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(500));
       fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
 
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -583,7 +592,7 @@ describe("fleet routes", () => {
     });
 
     it("returns 500 when nodeRepo.list() throws an unexpected error (not DATABASE_URL)", async () => {
-      fleetMock.create.mockResolvedValue(mockProfile);
+      fleetMock.create.mockResolvedValue(mockInstance);
       const dbError = new Error("Connection refused: ECONNREFUSED");
       mockGetNodeRepo.mockImplementationOnce(
         () =>

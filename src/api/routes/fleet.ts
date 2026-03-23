@@ -395,7 +395,15 @@ fleetRoutes.post(
         });
       }
 
-      return c.json({ ...profile, ...(gatewayKey ? { gatewayKey } : {}) }, 201);
+      return c.json(
+        {
+          id: profile.id,
+          name: profile.profile.name,
+          tenantId: profile.profile.tenantId,
+          ...(gatewayKey ? { gatewayKey } : {}),
+        },
+        201,
+      );
     } catch (err) {
       logger.error("Failed to create bot", { err });
       return c.json({ error: "Failed to create bot" }, 500);

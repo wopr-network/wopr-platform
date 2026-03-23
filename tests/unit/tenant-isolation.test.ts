@@ -297,7 +297,7 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
 
   it("POST /fleet/bots with mismatched tenantId in body is rejected", async () => {
     fleetMock.profiles.list.mockResolvedValue([]);
-    fleetMock.create.mockResolvedValue(profileB);
+    fleetMock.create.mockResolvedValue({ id: profileB.id, profile: profileB });
 
     // Tenant A's token attempts to create a bot for Tenant B
     const res = await fleetApp.request("/fleet/bots", {
@@ -316,7 +316,7 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
 
   it("POST /fleet/bots with matching tenantId succeeds", async () => {
     fleetMock.profiles.list.mockResolvedValue([]);
-    fleetMock.create.mockResolvedValue(profileA);
+    fleetMock.create.mockResolvedValue({ id: profileA.id, profile: profileA });
 
     const res = await fleetApp.request("/fleet/bots", {
       method: "POST",

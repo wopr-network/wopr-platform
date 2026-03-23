@@ -65,6 +65,12 @@ const mockProfile = {
   updatePolicy: "manual" as const,
 };
 
+/** Instance shape returned by fleet.create() — id + nested BotProfile under .profile. */
+const mockInstanceResult = {
+  id: TEST_BOT_ID,
+  profile: mockProfile,
+};
+
 const mockStatus = {
   id: TEST_BOT_ID,
   name: "test-bot",
@@ -123,7 +129,7 @@ function createFleetMock() {
     mockInstance,
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
-    create: vi.fn().mockResolvedValue(mockProfile),
+    create: vi.fn().mockResolvedValue(mockInstanceResult),
     update: vi.fn().mockResolvedValue(mockProfile),
     getInstance: vi.fn().mockResolvedValue(mockInstance),
     restart: vi.fn().mockResolvedValue(undefined),
@@ -300,12 +306,16 @@ describe("fleet.createInstance", () => {
     image: "ghcr.io/wopr-network/wopr:stable",
   };
 
-  it("calls fleet.create with ctx.tenantId injected; returns profile", async () => {
+  it("calls fleet.create with ctx.tenantId injected; returns minimal serializable shape", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.createInstance(createInput);
-    expect(result).toEqual(mockProfile);
+    expect(result).toEqual({ id: TEST_BOT_ID, name: "test-bot", tenantId: "test-tenant" });
     expect(fleetMock.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "new-bot", tenantId: "test-tenant" }),
+      expect.objectContaining({
+        name: "new-bot",
+        tenantId: "test-tenant",
+        volumeName: "wopr-data-test-tenant-new-bot",
+      }),
     );
   });
 
@@ -394,7 +404,7 @@ describe("fleet.createInstance", () => {
 
     const caller = createCaller(authedContext());
     const result = await caller.fleet.createInstance(createInput);
-    expect(result).toEqual(mockProfile);
+    expect(result).toEqual({ id: TEST_BOT_ID, name: "test-bot", tenantId: "test-tenant" });
     expect(fleetMock.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "test-tenant" }));
   });
 
