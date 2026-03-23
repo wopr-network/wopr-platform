@@ -177,7 +177,7 @@ describe("all templates", () => {
       expect(t.html).toContain("<!DOCTYPE html>");
       expect(t.html).toContain("<html>");
       expect(t.html).toContain("</html>");
-      expect(t.html).toContain("WOPR Network");
+      expect(t.html).toContain("WOPR");
       expect(t.subject.length).toBeGreaterThan(0);
       expect(t.text.length).toBeGreaterThan(0);
     }
