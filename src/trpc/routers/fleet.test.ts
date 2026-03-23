@@ -300,12 +300,12 @@ describe("fleet.createInstance", () => {
     image: "ghcr.io/wopr-network/wopr:stable",
   };
 
-  it("calls fleet.create with ctx.tenantId injected; returns profile", async () => {
+  it("calls fleet.create with ctx.tenantId injected; returns minimal serializable shape", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.createInstance(createInput);
-    expect(result).toEqual(mockProfile);
+    expect(result).toEqual({ id: TEST_BOT_ID, name: "test-bot", tenantId: "test-tenant" });
     expect(fleetMock.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "new-bot", tenantId: "test-tenant" }),
+      expect.objectContaining({ name: "new-bot", tenantId: "test-tenant", volumeName: "wopr-data-new-bot" }),
     );
   });
 
@@ -394,7 +394,7 @@ describe("fleet.createInstance", () => {
 
     const caller = createCaller(authedContext());
     const result = await caller.fleet.createInstance(createInput);
-    expect(result).toEqual(mockProfile);
+    expect(result).toEqual({ id: TEST_BOT_ID, name: "test-bot", tenantId: "test-tenant" });
     expect(fleetMock.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "test-tenant" }));
   });
 

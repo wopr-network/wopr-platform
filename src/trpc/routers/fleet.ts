@@ -138,7 +138,17 @@ export const fleetRouter = router({
   }),
 
   /** Create a new bot instance. Uses the existing createBotSchema from fleet/types.ts. */
-  createInstance: tenantProcedure.input(createBotSchema.omit({ tenantId: true })).mutation(async ({ input, ctx }) => {
+  createInstance: tenantProcedure
+    .input(createBotSchema.omit({ tenantId: true }))
+    .output(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        tenantId: z.string(),
+        gatewayKey: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
     const { getFleetManager, getCreditLedger } = deps();
     const fleet = getFleetManager();
 
@@ -222,8 +232,8 @@ export const fleetRouter = router({
 
       return {
         id: profile.id,
-        name: profile.profile.name,
-        tenantId: profile.profile.tenantId,
+        name: profile.name,
+        tenantId: profile.tenantId,
         ...(gatewayKey ? { gatewayKey } : {}),
       };
     } catch (err) {
