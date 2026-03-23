@@ -147,7 +147,7 @@ app.use(
     origin: (process.env.UI_ORIGIN || "http://localhost:3001").split(",").map((s) => s.trim()),
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowHeaders: ["Content-Type", "Authorization", "x-tenant-id", "trpc-batch-mode"],
+    allowHeaders: ["Content-Type", "Authorization", "x-tenant-id", "trpc-batch-mode", "trpc-accept"],
   }),
 );
 app.use("/*", secureHeaders());
