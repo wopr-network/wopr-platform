@@ -65,6 +65,21 @@ const mockProfile = {
   updatePolicy: "manual" as const,
 };
 
+/** Instance-shaped mock returned by fleet.create() — has nested .profile like the real Instance class. */
+const mockCreatedInstance = {
+  id: TEST_BOT_ID,
+  profile: {
+    name: "test-bot",
+    tenantId: "test-tenant",
+    description: "A test bot",
+    image: "ghcr.io/wopr-network/wopr:stable",
+    env: {},
+    restartPolicy: "unless-stopped" as const,
+    releaseChannel: "stable" as const,
+    updatePolicy: "manual" as const,
+  },
+};
+
 const mockStatus = {
   id: TEST_BOT_ID,
   name: "test-bot",
@@ -123,7 +138,7 @@ function createFleetMock() {
     mockInstance,
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
-    create: vi.fn().mockResolvedValue(mockProfile),
+    create: vi.fn().mockResolvedValue(mockCreatedInstance),
     update: vi.fn().mockResolvedValue(mockProfile),
     getInstance: vi.fn().mockResolvedValue(mockInstance),
     restart: vi.fn().mockResolvedValue(undefined),
