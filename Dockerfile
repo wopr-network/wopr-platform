@@ -45,7 +45,7 @@ FROM node:24-bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends curl git && rm -rf /var/lib/apt/lists/*
 
 # Install WOPR daemon globally (used by onboarding to provision instances)
-RUN npm install -g @wopr-network/wopr@latest
+RUN npm install -g @wopr-network/wopr@2.0.0
 
 WORKDIR /app
 
