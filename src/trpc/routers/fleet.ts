@@ -218,7 +218,12 @@ export const fleetRouter = router({
         // Key generation failed — instance is still usable, just without gateway access
       }
 
-      return { ...profile, ...(gatewayKey ? { gatewayKey } : {}) };
+      return {
+        id: profile.id,
+        name: profile.profile.name,
+        tenantId: profile.profile.tenantId,
+        ...(gatewayKey ? { gatewayKey } : {}),
+      };
     } catch (err) {
       if (err instanceof TRPCError) throw err;
       throw new TRPCError({
