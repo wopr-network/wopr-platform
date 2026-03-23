@@ -10,6 +10,9 @@ FROM node:24-bookworm-slim AS deps
 
 ARG PNPM_VERSION
 
+# Build tools for native modules (better-sqlite3 in @wopr-network/wopr)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 # Install pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
