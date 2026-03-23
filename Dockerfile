@@ -10,6 +10,9 @@ FROM node:24-bookworm-slim AS deps
 
 ARG PNPM_VERSION
 
+# Build tools for native modules (better-sqlite3 in @wopr-network/wopr)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 # Install pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
@@ -57,9 +60,10 @@ RUN groupadd -r wopr \
 # Production node_modules
 COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 
-# WOPR daemon binary — symlink from node_modules/.bin to PATH
-# (installed as prod dep to avoid QEMU segfaults with global npm install)
-RUN ln -sf /app/node_modules/.bin/wopr /usr/local/bin/wopr
+# WOPR daemon binary — wrapper script with absolute path
+# (pnpm's .bin scripts use $basedir-relative paths that break outside node_modules)
+RUN printf '#!/bin/sh\nexec node /app/node_modules/@wopr-network/wopr/dist/cli.js "$@"\n' > /usr/local/bin/wopr \
+    && chmod +x /usr/local/bin/wopr
 
 # Compiled output
 COPY --chown=wopr:wopr --from=build /app/dist ./dist
