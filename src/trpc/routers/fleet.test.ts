@@ -314,7 +314,7 @@ describe("fleet.createInstance", () => {
       expect.objectContaining({
         name: "new-bot",
         tenantId: "test-tenant",
-        volumeName: "wopr-data-test-tenant-new-bot",
+        volumeName: "wopr-data-new-bot",
       }),
     );
   });
