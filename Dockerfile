@@ -57,9 +57,10 @@ RUN groupadd -r wopr \
 # Production node_modules
 COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 
-# WOPR daemon binary — symlink from node_modules/.bin to PATH
-# (installed as prod dep to avoid QEMU segfaults with global npm install)
-RUN ln -sf /app/node_modules/.bin/wopr /usr/local/bin/wopr
+# WOPR daemon binary — wrapper script with absolute path
+# (pnpm's .bin scripts use $basedir-relative paths that break outside node_modules)
+RUN printf '#!/bin/sh\nexec node /app/node_modules/@wopr-network/wopr/dist/cli.js "$@"\n' > /usr/local/bin/wopr \
+    && chmod +x /usr/local/bin/wopr
 
 # Compiled output
 COPY --chown=wopr:wopr --from=build /app/dist ./dist
