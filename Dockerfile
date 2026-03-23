@@ -44,8 +44,9 @@ FROM node:24-bookworm-slim AS runtime
 # curl for HEALTHCHECK, git for worktree provisioning
 RUN apt-get update && apt-get install -y --no-install-recommends curl git && rm -rf /var/lib/apt/lists/*
 
-# Install WOPR daemon globally (used by onboarding to provision instances)
-RUN npm install -g @wopr-network/wopr@2.0.0
+# WOPR daemon binary — symlink from node_modules/.bin to PATH
+# (installed as prod dep to avoid QEMU segfaults with global npm install)
+RUN ln -sf /app/node_modules/.bin/wopr /usr/local/bin/wopr
 
 WORKDIR /app
 
