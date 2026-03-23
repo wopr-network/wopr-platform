@@ -214,10 +214,8 @@ export const fleetRouter = router({
       }
 
       try {
-        // Auto-generate a data volume name if not provided — ensures /data is writable.
-        // Prefix with a sanitized tenantId slice to prevent cross-tenant volume collisions.
-        const tenantSlug = ctx.tenantId.replace(/[^a-z0-9-]/g, "-").slice(0, 20);
-        const volumeName = input.volumeName ?? `wopr-data-${tenantSlug}-${input.name.replace(/[^a-z0-9-]/g, "-")}`;
+        // Auto-generate a data volume name if not provided — ensures /data is writable
+        const volumeName = input.volumeName ?? `wopr-data-${input.name.replace(/[^a-z0-9-]/g, "-")}`;
         const profile = await fleet.create({ ...input, tenantId: ctx.tenantId, nodeId, volumeName });
 
         // Generate a per-instance gateway service key for metered inference.
