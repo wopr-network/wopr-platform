@@ -44,9 +44,6 @@ FROM node:24-bookworm-slim AS runtime
 # curl for HEALTHCHECK, git for worktree provisioning
 RUN apt-get update && apt-get install -y --no-install-recommends curl git && rm -rf /var/lib/apt/lists/*
 
-# Install WOPR daemon globally (used by onboarding to provision instances)
-RUN npm install -g @wopr-network/wopr@2.0.0
-
 WORKDIR /app
 
 # DOCKER_GID should match the host docker group GID (e.g. pass --build-arg DOCKER_GID=$(getent group docker | cut -d: -f3))
@@ -59,6 +56,10 @@ RUN groupadd -r wopr \
 
 # Production node_modules
 COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
+
+# WOPR daemon binary — symlink from node_modules/.bin to PATH
+# (installed as prod dep to avoid QEMU segfaults with global npm install)
+RUN ln -sf /app/node_modules/.bin/wopr /usr/local/bin/wopr
 
 # Compiled output
 COPY --chown=wopr:wopr --from=build /app/dist ./dist
