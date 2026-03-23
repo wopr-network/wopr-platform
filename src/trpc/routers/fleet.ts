@@ -164,25 +164,25 @@ export const fleetRouter = router({
               cause: { balance, required: 17, buyUrl: "/dashboard/credits" },
             });
           }
-
-          // Quota check: count active instances for this tenant
-          const allProfiles = await fleet.profiles.list();
-          const activeInstances = allProfiles.filter((p) => p.tenantId === ctx.tenantId).length;
-          const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
-          if (!quotaResult.allowed) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message: quotaResult.reason ?? "Instance quota exceeded",
-              cause: {
-                currentInstances: quotaResult.currentInstances,
-                maxInstances: quotaResult.maxInstances,
-              },
-            });
-          }
         }
       } catch (err) {
         if (err instanceof TRPCError) throw err;
-        // Billing DB unavailable (e.g., in tests) — skip quota enforcement
+        // Billing DB unavailable (e.g., in tests) — skip balance enforcement
+      }
+
+      // Quota check: count active instances for this tenant (hard-fail on repository errors)
+      const allProfiles = await fleet.profiles.list();
+      const activeInstances = allProfiles.filter((p) => p.tenantId === ctx.tenantId).length;
+      const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
+      if (!quotaResult.allowed) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: quotaResult.reason ?? "Instance quota exceeded",
+          cause: {
+            currentInstances: quotaResult.currentInstances,
+            maxInstances: quotaResult.maxInstances,
+          },
+        });
       }
 
       // Placement: find best node for this bot
@@ -208,7 +208,7 @@ export const fleetRouter = router({
         // Only silently skip when nodeRepo is simply not wired (getNodeRepo?.() returned null/undefined above)
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: err instanceof Error ? err.message : "Placement failed",
+          message: "Placement failed",
           cause: err,
         });
       }
@@ -240,7 +240,8 @@ export const fleetRouter = router({
         if (err instanceof TRPCError) throw err;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: err instanceof Error ? err.message : "Failed to create bot",
+          message: "Failed to create bot",
+          cause: err,
         });
       }
     }),
