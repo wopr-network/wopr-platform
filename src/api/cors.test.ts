@@ -34,6 +34,7 @@ describe("CORS middleware", () => {
     const allowHeaders = res.headers.get("Access-Control-Allow-Headers");
     expect(allowHeaders).toContain("Content-Type");
     expect(allowHeaders).toContain("Authorization");
+    expect(allowHeaders).toContain("trpc-batch-mode");
 
     expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
   });
