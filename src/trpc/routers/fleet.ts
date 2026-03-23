@@ -218,10 +218,9 @@ export const fleetRouter = router({
         const volumeName = input.volumeName ?? `wopr-data-${input.name.replace(/[^a-z0-9-]/g, "-")}`;
         const profile = await fleet.create({ ...input, tenantId: ctx.tenantId, nodeId, volumeName });
 
-        // Start the container after creation (fleet.create only creates, doesn't start)
+        // Start the container (fleet.create only creates, doesn't start)
         try {
-          const instance = await fleet.getInstance(profile.id);
-          await instance.start();
+          await profile.start();
         } catch {
           // Start failure is non-fatal — instance shows as stopped, user can retry
         }
