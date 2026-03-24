@@ -34,7 +34,7 @@
     "@wopr-network/platform-core": "1.56.1",
     "@wopr-network/wopr": "2.0.0",
     "better-auth": "^1.5.5",
-    "dockerode": "^4.0.9",
+    "dockerode": "^4.0.10",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.12.8",
     "js-yaml": "^4.1.1",
