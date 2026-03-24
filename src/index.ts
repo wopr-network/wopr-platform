@@ -239,8 +239,9 @@ if (process.env.NODE_ENV !== "test") {
   logger.info("Database migrations complete");
 
   // ── Product config (DB-driven branding) ─────────────────────────────────────
-  // Boots the product config service and auto-seeds from the built-in preset
-  // for the given slug on first deploy. Must run before auth init so brandName
+  // Boots the product config service for the configured slug. The row must
+  // already exist in the database (seed via scripts/seed-products.ts or a
+  // manual insert) before first deploy. Must run before auth init so brandName
   // is available for email templates etc.
   const { platformBoot: _platformBoot } = await import("@wopr-network/platform-core/product-config");
   const { service: productConfigService, config: productConfig } = await _platformBoot({
