@@ -59,7 +59,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "vitest": "^4.0.18"
   },
   "pnpm": {
