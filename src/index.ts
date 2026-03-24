@@ -8,7 +8,7 @@ import { logger } from "@wopr-network/platform-core/config/logger";
 import { Credit, runCreditExpiryCron, runTrialBalanceCron } from "@wopr-network/platform-core/credits";
 import { eq, gte, sql } from "@wopr-network/platform-core/db/index";
 import * as schema from "@wopr-network/platform-core/db/schema/index";
-import { NotificationService } from "@wopr-network/platform-core/email";
+import { EmailClient, NotificationService, setEmailClient } from "@wopr-network/platform-core/email";
 import type { CommandResult } from "@wopr-network/platform-core/fleet/node-command-bus";
 import { DrizzleSpendingCapStore } from "@wopr-network/platform-core/fleet/spending-cap-repository";
 import { mountGateway } from "@wopr-network/platform-core/gateway/index";
@@ -110,6 +110,7 @@ import {
   setOrgKeysRouterDeps,
   setOrgRouterDeps,
   setPageContextRouterDeps,
+  setProductConfigRouterDeps,
   setProfileRouterDeps,
   setSettingsRouterDeps,
   setTrpcOrgMemberRepo,
@@ -117,6 +118,18 @@ import {
 import { validateRequiredEnvVars } from "./validate-env.js";
 
 validateRequiredEnvVars();
+
+// Module-level product config — set once after platformBoot(), used everywhere
+// NotificationService and getEmailClient() are wired from this.
+let _productConfig: {
+  product: {
+    brandName: string;
+    domain: string;
+    appDomain: string;
+    fromEmail: string;
+    emailSupport: string;
+  };
+} | null = null;
 
 const port = config.port;
 
@@ -236,6 +249,35 @@ if (process.env.NODE_ENV !== "test") {
   logger.info("Applying pending database migrations...");
   await runMigrations(getPool());
   logger.info("Database migrations complete");
+
+  // ── Product config (DB-driven branding) ─────────────────────────────────────
+  // Boots the product config service for the configured slug. The row must
+  // already exist in the database (seed via scripts/seed-products.ts or a
+  // manual insert) before first deploy. Must run before auth init so brandName
+  // is available for email templates etc.
+  const { platformBoot: _platformBoot } = await import("@wopr-network/platform-core/product-config");
+  const { service: productConfigService, config: productConfig } = await _platformBoot({
+    slug: config.productSlug,
+    db: getDb(),
+    devOrigins: process.env.DEV_ORIGINS?.split(",").filter(Boolean),
+  });
+  logger.info(`Product config loaded: ${productConfig.product.brandName} (${productConfig.product.domain})`);
+
+  // Store for use across notification pipeline and email client wiring below.
+  _productConfig = productConfig;
+
+  // Wire the email client singleton with DB-driven from/replyTo overrides so
+  // all transactional emails use the product's configured sender address.
+  if (productConfig.product.fromEmail) {
+    setEmailClient(
+      new EmailClient({
+        apiKey: process.env.RESEND_API_KEY ?? process.env.AWS_SES_REGION ?? "",
+        from: productConfig.product.fromEmail,
+        replyTo: productConfig.product.emailSupport || undefined,
+      }),
+    );
+    logger.info(`Email client configured: from=${productConfig.product.fromEmail}`);
+  }
 
   // ── Gateway wiring ──────────────────────────────────────────────────────────
   // Mount /v1/* gateway routes. Must be done before serve() so routes are
@@ -390,7 +432,10 @@ if (process.env.NODE_ENV !== "test") {
 
             const notificationService = new NotificationService(
               getNotificationQueueStore(),
-              process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot",
+              _productConfig
+                ? `https://${_productConfig.product.appDomain}`
+                : (process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot"),
+              _productConfig?.product.brandName,
             );
             notificationService.notifyCreditsDepeleted(tenantId, email);
           } catch (err) {
@@ -416,7 +461,10 @@ if (process.env.NODE_ENV !== "test") {
 
             const notificationService = new NotificationService(
               getNotificationQueueStore(),
-              process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot",
+              _productConfig
+                ? `https://${_productConfig.product.appDomain}`
+                : (process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot"),
+              _productConfig?.product.brandName,
             );
 
             await checkSpendAlert(
@@ -698,7 +746,9 @@ if (process.env.NODE_ENV !== "test") {
         );
         const { BulkOperationsStore } = await import("./admin/bulk/bulk-operations-store.js");
         const { DrizzleBulkOperationsRepository } = await import("./admin/bulk/bulk-operations-repository.js");
-        const appBaseUrl = process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot";
+        const appBaseUrl = _productConfig
+          ? `https://${_productConfig.product.appDomain}`
+          : (process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot");
         const { AccountDeletionStore } = await import("./account/deletion-store.js");
         setAdminRouterDeps({
           getAuditLog: () => new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
@@ -709,14 +759,15 @@ if (process.env.NODE_ENV !== "test") {
           getAutoTopupSettingsRepo: () => getAutoTopupSettingsRepo(),
           detachAllPaymentMethods: (tenantId: string) => detachAllPaymentMethods(stripe, tenantRepo, tenantId),
           getAffiliateFraudAdminRepo: () => new DrizzleAffiliateFraudAdminRepository(getDb()),
-          getNotificationService: () => new NotificationService(getNotificationQueueStore(), appBaseUrl),
+          getNotificationService: () =>
+            new NotificationService(getNotificationQueueStore(), appBaseUrl, _productConfig?.product.brandName),
           getBulkStore: () =>
             new BulkOperationsStore(
               new DrizzleBulkOperationsRepository(getDb()),
               getCreditLedger(),
               getTenantStatusRepo(),
               new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
-              new NotificationService(getNotificationQueueStore(), appBaseUrl),
+              new NotificationService(getNotificationQueueStore(), appBaseUrl, _productConfig?.product.brandName),
             ),
           getGpuAllocationRepo: () => getGpuAllocationRepo(),
           getGpuConfigurationRepo: () => getGpuConfigurationRepo(),
@@ -1008,6 +1059,10 @@ if (process.env.NODE_ENV !== "test") {
     });
     logger.info("tRPC fleet router initialized");
 
+    // Wire product config tRPC router deps
+    setProductConfigRouterDeps(productConfigService, config.productSlug);
+    logger.info("tRPC product config router initialized");
+
     // Initialize BetterAuth before getEmailVerifier() — must be called first.
     {
       const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
@@ -1140,8 +1195,14 @@ if (process.env.NODE_ENV !== "test") {
   // Weekly community dividend digest emails — summarizes last 7 days of dividends for each tenant.
   // Runs once every 7 days.
   {
-    const appBaseUrl = process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot";
-    const notificationService = new NotificationService(getNotificationQueueStore(), appBaseUrl);
+    const appBaseUrl = _productConfig
+      ? `https://${_productConfig.product.appDomain}`
+      : (process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot");
+    const notificationService = new NotificationService(
+      getNotificationQueueStore(),
+      appBaseUrl,
+      _productConfig?.product.brandName,
+    );
     const WEEKLY_MS = 7 * 24 * 60 * 60 * 1000;
     cronIntervals.push(
       setInterval(() => {
