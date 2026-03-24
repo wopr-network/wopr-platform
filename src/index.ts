@@ -110,6 +110,7 @@ import {
   setOrgKeysRouterDeps,
   setOrgRouterDeps,
   setPageContextRouterDeps,
+  setProductConfigRouterDeps,
   setProfileRouterDeps,
   setSettingsRouterDeps,
   setTrpcOrgMemberRepo,
@@ -236,6 +237,18 @@ if (process.env.NODE_ENV !== "test") {
   logger.info("Applying pending database migrations...");
   await runMigrations(getPool());
   logger.info("Database migrations complete");
+
+  // ── Product config (DB-driven branding) ─────────────────────────────────────
+  // Boots the product config service and auto-seeds from the built-in preset
+  // for the given slug on first deploy. Must run before auth init so brandName
+  // is available for email templates etc.
+  const { platformBoot: _platformBoot } = await import("@wopr-network/platform-core/product-config");
+  const { service: productConfigService, config: productConfig } = await _platformBoot({
+    slug: config.productSlug,
+    db: getDb(),
+    devOrigins: process.env.DEV_ORIGINS?.split(",").filter(Boolean),
+  });
+  logger.info(`Product config loaded: ${productConfig.product.brandName} (${productConfig.product.domain})`);
 
   // ── Gateway wiring ──────────────────────────────────────────────────────────
   // Mount /v1/* gateway routes. Must be done before serve() so routes are
@@ -1007,6 +1020,10 @@ if (process.env.NODE_ENV !== "test") {
       getServiceKeyRepo: () => getServiceKeyRepo(),
     });
     logger.info("tRPC fleet router initialized");
+
+    // Wire product config tRPC router deps
+    setProductConfigRouterDeps(productConfigService, config.productSlug);
+    logger.info("tRPC product config router initialized");
 
     // Initialize BetterAuth before getEmailVerifier() — must be called first.
     {

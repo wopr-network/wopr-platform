@@ -32,7 +32,7 @@
  *   const client = createTRPCClient<AppRouter>({ ... });
  */
 
-import { router } from "@wopr-network/platform-core/trpc";
+import { createProductConfigRouter, router } from "@wopr-network/platform-core/trpc";
 import { accountRouter } from "./routers/account.js";
 import { addonRouter } from "./routers/addons.js";
 import { adminRouter } from "./routers/admin.js";
@@ -49,6 +49,19 @@ import { promotionsRouter, rateOverridesRouter } from "./routers/promotions.js";
 import { settingsRouter } from "./routers/settings.js";
 import { twoFactorRouter } from "./routers/two-factor.js";
 
+// Extract the ProductConfigService type without importing from product-config directly
+// (that subpath has no package.json exports entry in older versions).
+type ProductConfigService = Parameters<typeof createProductConfigRouter>[0] extends () => infer S ? S : never;
+
+// Late-bound — set by setProductConfigRouterDeps() after platformBoot() in index.ts.
+let _productConfigService: ProductConfigService | null = null;
+let _productSlug = "wopr";
+
+export function setProductConfigRouterDeps(service: ProductConfigService, slug: string): void {
+  _productConfigService = service;
+  _productSlug = slug;
+}
+
 export const appRouter = router({
   account: accountRouter,
   addons: addonRouter,
@@ -58,6 +71,10 @@ export const appRouter = router({
   fleet: fleetRouter,
   marketplace: marketplaceRouter,
   modelSelection: modelSelectionRouter,
+  product: createProductConfigRouter(() => {
+    if (!_productConfigService) throw new Error("ProductConfigService not initialized");
+    return _productConfigService;
+  }, _productSlug),
   profile: profileRouter,
   settings: settingsRouter,
   admin: adminRouter,
