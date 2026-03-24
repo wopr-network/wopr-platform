@@ -57,33 +57,45 @@ type ProductConfigService = Parameters<typeof createProductConfigRouter>[0] exte
 let _productConfigService: ProductConfigService | null = null;
 let _productSlug = "wopr";
 
+function buildAppRouter() {
+  return router({
+    account: accountRouter,
+    addons: addonRouter,
+    billing: billingRouter,
+    promotions: promotionsRouter,
+    rateOverrides: rateOverridesRouter,
+    fleet: fleetRouter,
+    marketplace: marketplaceRouter,
+    modelSelection: modelSelectionRouter,
+    // createProductConfigRouter captures productSlug by value at construction time, so
+    // the entire appRouter must be rebuilt when setProductConfigRouterDeps() is called
+    // with the real slug from PRODUCT_SLUG env var (see below).
+    product: createProductConfigRouter(() => {
+      if (!_productConfigService) throw new Error("ProductConfigService not initialized");
+      return _productConfigService;
+    }, _productSlug),
+    profile: profileRouter,
+    settings: settingsRouter,
+    admin: adminRouter,
+    twoFactor: twoFactorRouter,
+    nodes: nodesRouter,
+    org: orgRouter,
+    orgKeys: orgKeysRouter,
+    pageContext: pageContextRouter,
+  });
+}
+
 export function setProductConfigRouterDeps(service: ProductConfigService, slug: string): void {
   _productConfigService = service;
   _productSlug = slug;
+  // Rebuild so the product sub-router captures the correct slug. appRouter is a live
+  // ESM binding; importers (e.g. app.ts fetchRequestHandler) read it at call time.
+  appRouter = buildAppRouter();
 }
 
-export const appRouter = router({
-  account: accountRouter,
-  addons: addonRouter,
-  billing: billingRouter,
-  promotions: promotionsRouter,
-  rateOverrides: rateOverridesRouter,
-  fleet: fleetRouter,
-  marketplace: marketplaceRouter,
-  modelSelection: modelSelectionRouter,
-  product: createProductConfigRouter(() => {
-    if (!_productConfigService) throw new Error("ProductConfigService not initialized");
-    return _productConfigService;
-  }, _productSlug),
-  profile: profileRouter,
-  settings: settingsRouter,
-  admin: adminRouter,
-  twoFactor: twoFactorRouter,
-  nodes: nodesRouter,
-  org: orgRouter,
-  orgKeys: orgKeysRouter,
-  pageContext: pageContextRouter,
-});
+// Initially built with the default slug; rebuilt in setProductConfigRouterDeps() once
+// platformBoot() resolves the real PRODUCT_SLUG so procedures use the correct slug.
+export let appRouter = buildAppRouter();
 
 /** The root router type — import this in the UI repo for full type inference. */
 export type AppRouter = typeof appRouter;
