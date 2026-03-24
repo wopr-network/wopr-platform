@@ -55,7 +55,10 @@ type ProductConfigService = Parameters<typeof createProductConfigRouter>[0] exte
 
 // Late-bound — set by setProductConfigRouterDeps() after platformBoot() in index.ts.
 let _productConfigService: ProductConfigService | null = null;
-let _productSlug = "wopr";
+// Read from env at module init so appRouter captures the correct slug when constructed
+// (before setProductConfigRouterDeps() is called). PRODUCT_SLUG is a static env var that
+// doesn't change at runtime, so reading it here is safe.
+let _productSlug = process.env.PRODUCT_SLUG ?? "wopr";
 
 function buildAppRouter() {
   return router({
