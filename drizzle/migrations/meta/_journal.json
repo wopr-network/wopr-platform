@@ -218,6 +218,13 @@
       "when": 1774329047535,
       "tag": "0081_tidy_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1774401214558,
+      "tag": "0082_magical_killmonger",
+      "breakpoints": true
     }
   ]
 }
