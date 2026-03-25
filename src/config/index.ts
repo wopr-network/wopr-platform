@@ -32,9 +32,11 @@ const platformExtras = z
   .object({
     discovery: discoverySchema,
     pagerduty: pagerdutySchema,
+    productSlug: z.string().default("wopr"),
   })
   .parse({
     discovery: { defaultTopic: process.env.DISCOVERY_DEFAULT_TOPIC },
+    productSlug: process.env.PRODUCT_SLUG,
     pagerduty: {
       enabled: process.env.PAGERDUTY_ENABLED,
       routingKey: process.env.PAGERDUTY_ROUTING_KEY,

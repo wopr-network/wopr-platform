@@ -32,7 +32,7 @@
  *   const client = createTRPCClient<AppRouter>({ ... });
  */
 
-import { router } from "@wopr-network/platform-core/trpc";
+import { createProductConfigRouter, router } from "@wopr-network/platform-core/trpc";
 import { accountRouter } from "./routers/account.js";
 import { addonRouter } from "./routers/addons.js";
 import { adminRouter } from "./routers/admin.js";
@@ -49,24 +49,56 @@ import { promotionsRouter, rateOverridesRouter } from "./routers/promotions.js";
 import { settingsRouter } from "./routers/settings.js";
 import { twoFactorRouter } from "./routers/two-factor.js";
 
-export const appRouter = router({
-  account: accountRouter,
-  addons: addonRouter,
-  billing: billingRouter,
-  promotions: promotionsRouter,
-  rateOverrides: rateOverridesRouter,
-  fleet: fleetRouter,
-  marketplace: marketplaceRouter,
-  modelSelection: modelSelectionRouter,
-  profile: profileRouter,
-  settings: settingsRouter,
-  admin: adminRouter,
-  twoFactor: twoFactorRouter,
-  nodes: nodesRouter,
-  org: orgRouter,
-  orgKeys: orgKeysRouter,
-  pageContext: pageContextRouter,
-});
+// Extract the ProductConfigService type without importing from product-config directly
+// (that subpath has no package.json exports entry in older versions).
+type ProductConfigService = Parameters<typeof createProductConfigRouter>[0] extends () => infer S ? S : never;
+
+// Late-bound — set by setProductConfigRouterDeps() after platformBoot() in index.ts.
+let _productConfigService: ProductConfigService | null = null;
+// Read from env at module init so appRouter captures the correct slug when constructed
+// (before setProductConfigRouterDeps() is called). PRODUCT_SLUG is a static env var that
+// doesn't change at runtime, so reading it here is safe.
+let _productSlug = process.env.PRODUCT_SLUG ?? "wopr";
+
+function buildAppRouter() {
+  return router({
+    account: accountRouter,
+    addons: addonRouter,
+    billing: billingRouter,
+    promotions: promotionsRouter,
+    rateOverrides: rateOverridesRouter,
+    fleet: fleetRouter,
+    marketplace: marketplaceRouter,
+    modelSelection: modelSelectionRouter,
+    // createProductConfigRouter captures productSlug by value at construction time, so
+    // the entire appRouter must be rebuilt when setProductConfigRouterDeps() is called
+    // with the real slug from PRODUCT_SLUG env var (see below).
+    product: createProductConfigRouter(() => {
+      if (!_productConfigService) throw new Error("ProductConfigService not initialized");
+      return _productConfigService;
+    }, _productSlug),
+    profile: profileRouter,
+    settings: settingsRouter,
+    admin: adminRouter,
+    twoFactor: twoFactorRouter,
+    nodes: nodesRouter,
+    org: orgRouter,
+    orgKeys: orgKeysRouter,
+    pageContext: pageContextRouter,
+  });
+}
+
+export function setProductConfigRouterDeps(service: ProductConfigService, slug: string): void {
+  _productConfigService = service;
+  _productSlug = slug;
+  // Rebuild so the product sub-router captures the correct slug. appRouter is a live
+  // ESM binding; importers (e.g. app.ts fetchRequestHandler) read it at call time.
+  appRouter = buildAppRouter();
+}
+
+// Initially built with the default slug; rebuilt in setProductConfigRouterDeps() once
+// platformBoot() resolves the real PRODUCT_SLUG so procedures use the correct slug.
+export let appRouter = buildAppRouter();
 
 /** The root router type — import this in the UI repo for full type inference. */
 export type AppRouter = typeof appRouter;
