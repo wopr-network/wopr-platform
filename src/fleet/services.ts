@@ -246,6 +246,16 @@ export function getDb(): DrizzleDb {
   return _db;
 }
 
+/**
+ * Initialize fleet services from an external pool/db (e.g. from buildContainer).
+ * Must be called before any getter when using the DI container pattern.
+ */
+export function initFromContainer(pool: Pool, db: DrizzleDb): void {
+  _pool = pool;
+  _db = db;
+  _initPlatformServices(getDb);
+}
+
 /** Alias for audit DB — same PostgreSQL database in the pg migration. */
 export function getAuditDb(): DrizzleDb {
   return getDb();

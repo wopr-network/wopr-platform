@@ -246,21 +246,31 @@ function acceptAndWireWebSocket(nodeId: string, ws: WebSocket): void {
 // Only start the server if not imported by tests
 if (process.env.NODE_ENV !== "test") {
   logger.info(`wopr-platform starting on port ${port}`);
+
+  // ── DI container (pool, migrations, product config, core services) ────────
+  // Run wopr's own migrations first (82 migration files generated from the
+  // shared schema), then hand the pool to buildContainer which wires product
+  // config, credit ledger, org repos, etc.
   logger.info("Applying pending database migrations...");
   await runMigrations(getPool());
   logger.info("Database migrations complete");
 
-  // ── Product config (DB-driven branding) ─────────────────────────────────────
-  // Boots the product config service for the configured slug. The row must
-  // already exist in the database (seed via scripts/seed-products.ts or a
-  // manual insert) before first deploy. Must run before auth init so brandName
-  // is available for email templates etc.
-  const { platformBoot: _platformBoot } = await import("@wopr-network/platform-core/product-config");
-  const { service: productConfigService, config: productConfig } = await _platformBoot({
+  const { buildContainer } = await import("@wopr-network/platform-core/server");
+  const container = await buildContainer({
     slug: config.productSlug,
-    db: getDb(),
-    devOrigins: process.env.DEV_ORIGINS?.split(",").filter(Boolean),
+    databaseUrl: process.env.DATABASE_URL ?? "",
+    pool: getPool(),
+    provisionSecret: process.env.PROVISION_SECRET ?? "",
+    features: { fleet: false, crypto: false, stripe: false, gateway: false, hotPool: false },
   });
+
+  // Share container's db with the singleton layer so all lazy getters
+  // (fleet/services.ts + platform-services.ts) use the same pool/db.
+  const { initFromContainer } = await import("./fleet/services.js");
+  initFromContainer(container.pool, container.db);
+
+  const productConfigService = container.productConfigService;
+  const productConfig = container.productConfig;
   logger.info(`Product config loaded: ${productConfig.product.brandName} (${productConfig.product.domain})`);
 
   // Store for use across notification pipeline and email client wiring below.
