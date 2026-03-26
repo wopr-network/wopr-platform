@@ -5,7 +5,7 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { getDb } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 /** Backward-compatible factory: takes a DrizzleDb and creates a RateStore internally. */
 export function createAdminRateApiRoutes(db: DrizzleDb): Hono<AuthEnv> {

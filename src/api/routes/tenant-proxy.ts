@@ -4,7 +4,7 @@ import { logger } from "@wopr-network/platform-core/config/logger";
 import { getBotProfileRepo } from "@wopr-network/platform-core/fleet/services";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
-import { getOrgMemberRepo } from "../../platform-services.js";
+import { getOrgMemberRepo } from "../../fleet/services.js";
 
 /**
  * Domain config, read once at startup.

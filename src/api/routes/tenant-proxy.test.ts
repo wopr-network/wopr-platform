@@ -90,8 +90,8 @@ describe("buildUpstreamHeaders", () => {
 // Middleware tests: tenantProxyMiddleware
 // ---------------------------------------------------------------------------
 
-// Mock platform-services — prevent "not initialized" error
-vi.mock("../../platform-services.js", () => ({
+// Mock fleet/services — prevent "not initialized" error
+vi.mock("../../fleet/services.js", () => ({
   getOrgMemberRepo: vi.fn(() => ({
     findMember: (...args: unknown[]) => mockFindMember(...args),
     listMembers: vi.fn().mockResolvedValue([]),

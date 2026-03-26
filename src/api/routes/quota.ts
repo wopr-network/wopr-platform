@@ -3,7 +3,7 @@ import { buildTokenMap, scopedBearerAuth } from "@wopr-network/platform-core/aut
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
-import { getCreditLedger } from "../../platform-services.js";
+import { getCreditLedger } from "../../fleet/services.js";
 
 // Re-export factory from core
 export { createQuotaRoutes } from "@wopr-network/platform-core/api/routes/quota";

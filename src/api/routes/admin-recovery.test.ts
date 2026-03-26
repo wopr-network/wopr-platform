@@ -19,7 +19,7 @@ vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
 
-vi.mock("../../platform-services.js", () => ({
+vi.mock("../../fleet/services.js", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
 }));
 vi.mock("@wopr-network/platform-core/auth", () => ({
@@ -44,7 +44,7 @@ import {
   getRecoveryOrchestrator,
   getRecoveryRepo,
 } from "@wopr-network/platform-core/fleet/services";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 import { adminNodeRoutes, adminRecoveryRoutes } from "./admin-recovery.js";
 
 beforeEach(() => {

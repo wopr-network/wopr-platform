@@ -21,7 +21,7 @@ import { getEmailClient } from "@wopr-network/platform-core/email/client";
 import { getPool } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
 import type { Pool } from "pg";
-import { getCreditLedger } from "../../platform-services.js";
+import { getCreditLedger } from "../../fleet/services.js";
 
 const UI_ORIGIN = process.env.UI_ORIGIN || "http://localhost:3001";
 

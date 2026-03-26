@@ -18,7 +18,7 @@ import {
   getRecoveryRepo,
 } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 // Re-export factories from core
 export {

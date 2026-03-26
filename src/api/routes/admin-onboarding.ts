@@ -2,7 +2,7 @@ import { createAdminOnboardingRoutes as _create } from "@wopr-network/platform-c
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 // Re-export factory from core
 export { createAdminOnboardingRoutes } from "@wopr-network/platform-core/api/routes/admin-onboarding";

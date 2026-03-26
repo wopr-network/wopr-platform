@@ -6,7 +6,7 @@ import { getDb } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
 import type { IAdminNotesRepository } from "../../admin/notes/admin-notes-repository.js";
 import { AdminNotesStore } from "../../admin/notes/store.js";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 export interface AdminNotesRouteDeps {
   db: DrizzleDb;
