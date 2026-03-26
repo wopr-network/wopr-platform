@@ -77,7 +77,23 @@ jobs:
   deploy-staging:
     runs-on: [self-hosted, Linux, X64]
     needs: build-and-push
+    environment: staging
     steps:
+      - name: Record previous image
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: root
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            CURRENT=$(docker inspect --format='{{.Config.Image}}' wopr-platform-staging-api-1 2>/dev/null | grep -oP ':\K[a-f0-9]{7,}$' || true)
+            if [ -n "$CURRENT" ]; then
+              echo "$CURRENT" > /opt/wopr-platform/.previous-staging-sha
+              echo "Recorded previous SHA: $CURRENT"
+            else
+              echo "No previous staging container found"
+            fi
+
       - name: Deploy to staging VPS
         uses: appleboy/ssh-action@v1
         with:
@@ -96,7 +112,9 @@ jobs:
             $COMPOSE up -d staging-api
             echo "Staging API deployed"
 
-      - name: Verify staging health
+      - name: Health check
+        id: health
+        continue-on-error: true
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
@@ -113,3 +131,42 @@ jobs:
             echo "Health check timed out"
             docker logs wopr-platform-staging-api-1 --tail 20
             exit 1
+
+      - name: Rollback on failure
+        if: steps.health.outcome == 'failure'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: root
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            echo "Health check failed — rolling back staging-api"
+            cd /opt/wopr-platform
+            COMPOSE="docker compose -f docker-compose.yml -f docker-compose.staging.yml"
+            $COMPOSE logs --tail=30 staging-api
+            PREV_TAG=$(cat /opt/wopr-platform/.previous-staging-sha 2>/dev/null || true)
+            if [ -n "$PREV_TAG" ]; then
+              echo "Rolling back to ${{ env.IMAGE }}:${PREV_TAG}"
+              docker pull ${{ env.IMAGE }}:${PREV_TAG}
+              docker tag ${{ env.IMAGE }}:${PREV_TAG} ${{ env.IMAGE }}:staging
+              $COMPOSE up -d --force-recreate staging-api
+              echo "Rollback complete"
+            else
+              echo "::warning::No previous image tag available for rollback"
+              $COMPOSE stop staging-api
+            fi
+
+      - name: Prune old images
+        if: steps.health.outcome != 'failure'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: root
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: docker image prune -f
+
+      - name: Fail workflow if health check failed
+        if: steps.health.outcome == 'failure'
+        run: |
+          echo "::error::Staging deployment health check failed. Rollback executed."
+          exit 1
