@@ -5,7 +5,6 @@ vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getGpuNodeRepository: vi.fn(),
   getGpuNodeProvisioner: vi.fn(),
   getDOClient: vi.fn(),
-  getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
 }));
 vi.mock("../../fleet/services.js", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
