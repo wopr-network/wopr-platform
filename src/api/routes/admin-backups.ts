@@ -5,7 +5,7 @@ import type { IBackupStatusStore } from "@wopr-network/platform-core/backup/back
 import { SpacesClient } from "@wopr-network/platform-core/backup/spaces-client";
 import { getBackupStatusStore } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 // Re-export helper from core
 export { isRemotePathOwnedBy } from "@wopr-network/platform-core/api/routes/admin-backups";

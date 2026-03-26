@@ -11,7 +11,7 @@ import type { ITenantCustomerRepository } from "@wopr-network/platform-core/bill
 import { logger } from "@wopr-network/platform-core/config/logger";
 import { getSnapshotManager } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { getTenantCustomerRepository } from "../../platform-services.js";
+import { getTenantCustomerRepository } from "../../fleet/services.js";
 
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
 const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";

@@ -4,7 +4,7 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network
 import { logger } from "@wopr-network/platform-core/config/logger";
 import { getDOClient, getGpuNodeProvisioner, getGpuNodeRepository } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 // Re-export factory from core
 export { createAdminGpuRoutes } from "@wopr-network/platform-core/api/routes/admin-gpu";

@@ -6,7 +6,7 @@ import {
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { Hono } from "hono";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 // Re-export middleware from core
 export { requirePlatformAdmin, requireTenantAdmin } from "@wopr-network/platform-core/api/routes/admin-roles";

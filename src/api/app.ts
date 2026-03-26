@@ -29,7 +29,7 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import { getCredentialRepo, getOrgRepo, getSecretAuditRepo } from "../platform-services.js";
+import { getCredentialRepo, getOrgRepo, getSecretAuditRepo } from "../fleet/services.js";
 import { appRouter } from "../trpc/index.js";
 import { csrfProtection } from "./middleware/csrf.js";
 import { activityRoutes } from "./routes/activity.js";

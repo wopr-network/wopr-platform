@@ -265,7 +265,7 @@ if (process.env.NODE_ENV !== "test") {
   });
 
   // Share container's db with the singleton layer so all lazy getters
-  // (fleet/services.ts + platform-services.ts) use the same pool/db.
+  // fleet/services.ts uses the same pool/db.
   const { initFromContainer } = await import("./fleet/services.js");
   initFromContainer(container.pool, container.db);
 

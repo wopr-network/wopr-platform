@@ -2,7 +2,7 @@ import { createAdminCreditApiRoutes as _create } from "@wopr-network/platform-co
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
-import { getAdminAuditLog, getCreditLedger } from "../../platform-services.js";
+import { getAdminAuditLog, getCreditLedger } from "../../fleet/services.js";
 
 // Re-export factory from core
 export { createAdminCreditApiRoutes } from "@wopr-network/platform-core/api/routes/admin-credits";

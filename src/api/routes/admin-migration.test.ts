@@ -6,7 +6,7 @@ vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getMigrationOrchestrator: vi.fn(),
 }));
 
-vi.mock("../../platform-services.js", () => ({
+vi.mock("../../fleet/services.js", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
 }));
 vi.mock("@wopr-network/platform-core/auth", () => ({
@@ -20,7 +20,7 @@ vi.mock("@wopr-network/platform-core/auth", () => ({
 
 import type { AdminAuditLog } from "@wopr-network/platform-core/admin";
 import { getMigrationOrchestrator } from "@wopr-network/platform-core/fleet/services";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 import { adminMigrationRoutes } from "./admin-migration.js";
 
 beforeEach(() => {

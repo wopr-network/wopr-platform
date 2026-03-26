@@ -6,7 +6,7 @@ import { createAdminMarketplaceRoutes as _create } from "@wopr-network/platform-
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import type { IMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/marketplace-plugin-repository";
 import type { Hono } from "hono";
-import { getAdminAuditLog } from "../../platform-services.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 /** Backward-compatible factory that wires up WOPR platform services. */
 export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePluginRepository): Hono<AuthEnv> {

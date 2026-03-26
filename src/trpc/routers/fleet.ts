@@ -41,7 +41,7 @@ import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { adminProcedure, protectedProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import { removeInstance } from "../../fleet/fleet-remove.js";
-import { getTenantCustomerRepository } from "../../platform-services.js";
+import { getTenantCustomerRepository } from "../../fleet/services.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas
