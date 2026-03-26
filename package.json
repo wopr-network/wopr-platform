@@ -30,7 +30,7 @@
   "dependencies": {
     "@aws-sdk/client-ses": ">=3",
     "@hono/node-server": "^1.19.11",
-    "@sentry/node": "^10.45.0",
+    "@sentry/node": "^10.46.0",
     "@trpc/server": "^11.15.0",
     "@wopr-network/platform-core": "1.68.0",
     "@wopr-network/wopr": "2.0.0",
