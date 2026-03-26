@@ -27,8 +27,8 @@ importers:
         specifier: ^11.15.0
         version: 11.15.0(typescript@5.9.3)
       '@wopr-network/platform-core':
-        specifier: 1.68.0
-        version: 1.68.0(e811f2b622ddf8b6f57ca5d1970408d3)
+        specifier: 1.71.0
+        version: 1.71.0(e811f2b622ddf8b6f57ca5d1970408d3)
       '@wopr-network/wopr':
         specifier: 2.0.0
         version: 2.0.0(b8228da64c9e436de3b6e6ca4654d876)
@@ -1822,8 +1822,8 @@ packages:
     peerDependencies:
       '@wopr-network/platform-crypto-server': '*'
 
-  '@wopr-network/platform-core@1.68.0':
-    resolution: {integrity: sha512-0VON7ydXx6W72yK2v6HnDgpukr/910mU2Eq3tDrExKItDVas7SVv1K7zJOlcMqEWGkTOkkfa4dCdhdX24G6swQ==}
+  '@wopr-network/platform-core@1.71.0':
+    resolution: {integrity: sha512-8n2xqokcwWvf3z8kBCV+aTXf8wS1IjA3iKn64aWaeTtNbfunN5ILOe6jPq4HPS2yRoHeF9tsjgaZYNGDVGPaxA==}
     peerDependencies:
       '@aws-sdk/client-ses': '>=3'
       '@trpc/server': '>=11'
@@ -5398,7 +5398,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@wopr-network/platform-core@1.68.0(e811f2b622ddf8b6f57ca5d1970408d3)':
+  '@wopr-network/platform-core@1.71.0(e811f2b622ddf8b6f57ca5d1970408d3)':
     dependencies:
       '@aws-sdk/client-ses': 3.1014.0
       '@hono/node-server': 1.19.11(hono@4.12.8)
