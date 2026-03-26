@@ -73,3 +73,43 @@ jobs:
             ${{ env.IMAGE }}:${{ steps.meta.outputs.sha_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy-staging:
+    runs-on: [self-hosted, Linux, X64]
+    needs: build-and-push
+    steps:
+      - name: Deploy to staging VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: root
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/wopr-platform
+            COMPOSE="docker compose -f docker-compose.yml -f docker-compose.staging.yml"
+            $COMPOSE stop staging-api 2>/dev/null || true
+            $COMPOSE pull staging-api
+            $COMPOSE exec -T staging-postgres psql -U wopr -d wopr_platform -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null || true
+            docker compose exec -T postgres pg_dump -U wopr --no-owner --no-acl wopr_platform | \
+              $COMPOSE exec -T staging-postgres psql -U wopr -d wopr_platform -q
+            $COMPOSE up -d staging-api
+            echo "Staging API deployed"
+
+      - name: Verify staging health
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: root
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            for i in $(seq 1 30); do
+              if docker exec wopr-platform-staging-api-1 curl -sf http://localhost:3100/health >/dev/null 2>&1; then
+                echo "Staging API is healthy"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Health check timed out"
+            docker logs wopr-platform-staging-api-1 --tail 20
+            exit 1
