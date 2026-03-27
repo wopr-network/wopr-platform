@@ -83,13 +83,19 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: root
-          key: ${{ secrets.PROD_SSH_KEY }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.SSH_DEPLOY_KEY || secrets.PROD_SSH_KEY }}
           script: |
-            CURRENT=$(docker inspect --format='{{.Config.Image}}' wopr-platform-staging-api-1 2>/dev/null | grep -oP ':\K[a-f0-9]{7,}$' || true)
+            COMPOSE_DIR="${STAGING_COMPOSE_DIR:-/opt/wopr-platform}"
+            cd "$COMPOSE_DIR" || { echo "Compose dir $COMPOSE_DIR not found — first deploy?"; exit 0; }
+            COMPOSE="docker compose -f docker-compose.yml -f docker-compose.staging.yml"
+            CURRENT=$($COMPOSE ps -q staging-api 2>/dev/null | head -1)
             if [ -n "$CURRENT" ]; then
-              echo "$CURRENT" > /opt/wopr-platform/.previous-staging-sha
-              echo "Recorded previous SHA: $CURRENT"
+              SHA=$(docker inspect --format='{{.Config.Image}}' "$CURRENT" 2>/dev/null | grep -oP ':\K[a-f0-9]{7,}$' || true)
+              if [ -n "$SHA" ]; then
+                echo "$SHA" > "$COMPOSE_DIR/.previous-staging-sha"
+                echo "Recorded previous SHA: $SHA"
+              fi
             else
               echo "No previous staging container found"
             fi
@@ -98,17 +104,23 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: root
-          key: ${{ secrets.PROD_SSH_KEY }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.SSH_DEPLOY_KEY || secrets.PROD_SSH_KEY }}
           script: |
             set -euo pipefail
-            cd /opt/wopr-platform
+            COMPOSE_DIR="${STAGING_COMPOSE_DIR:-/opt/wopr-platform}"
+            cd "$COMPOSE_DIR"
             COMPOSE="docker compose -f docker-compose.yml -f docker-compose.staging.yml"
             $COMPOSE stop staging-api 2>/dev/null || true
             $COMPOSE pull staging-api
-            $COMPOSE exec -T staging-postgres psql -U wopr -d wopr_platform -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null || true
-            docker compose exec -T postgres pg_dump -U wopr --no-owner --no-acl wopr_platform | \
-              $COMPOSE exec -T staging-postgres psql -U wopr -d wopr_platform -q
+            # Copy prod DB to staging (skip if staging postgres not configured)
+            if $COMPOSE ps staging-postgres 2>/dev/null | grep -q running; then
+              PG_USER="${STAGING_PG_USER:-wopr}"
+              PG_DB="${STAGING_PG_DB:-wopr_platform}"
+              $COMPOSE exec -T staging-postgres psql -U "$PG_USER" -d "$PG_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null || true
+              docker compose exec -T postgres pg_dump -U "$PG_USER" --no-owner --no-acl "$PG_DB" | \
+                $COMPOSE exec -T staging-postgres psql -U "$PG_USER" -d "$PG_DB" -q
+            fi
             $COMPOSE up -d staging-api
             echo "Staging API deployed"
 
@@ -118,18 +130,21 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: root
-          key: ${{ secrets.PROD_SSH_KEY }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.SSH_DEPLOY_KEY || secrets.PROD_SSH_KEY }}
           script: |
+            COMPOSE_DIR="${STAGING_COMPOSE_DIR:-/opt/wopr-platform}"
+            COMPOSE="docker compose -f $COMPOSE_DIR/docker-compose.yml -f $COMPOSE_DIR/docker-compose.staging.yml"
             for i in $(seq 1 30); do
-              if docker exec wopr-platform-staging-api-1 curl -sf http://localhost:3100/health >/dev/null 2>&1; then
+              CONTAINER=$($COMPOSE ps -q staging-api 2>/dev/null | head -1)
+              if [ -n "$CONTAINER" ] && docker exec "$CONTAINER" curl -sf http://localhost:3100/health >/dev/null 2>&1; then
                 echo "Staging API is healthy"
                 exit 0
               fi
               sleep 2
             done
             echo "Health check timed out"
-            docker logs wopr-platform-staging-api-1 --tail 20
+            $COMPOSE logs --tail 20 staging-api
             exit 1
 
       - name: Rollback on failure
@@ -137,14 +152,15 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: root
-          key: ${{ secrets.PROD_SSH_KEY }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.SSH_DEPLOY_KEY || secrets.PROD_SSH_KEY }}
           script: |
             echo "Health check failed — rolling back staging-api"
-            cd /opt/wopr-platform
+            COMPOSE_DIR="${STAGING_COMPOSE_DIR:-/opt/wopr-platform}"
+            cd "$COMPOSE_DIR"
             COMPOSE="docker compose -f docker-compose.yml -f docker-compose.staging.yml"
             $COMPOSE logs --tail=30 staging-api
-            PREV_TAG=$(cat /opt/wopr-platform/.previous-staging-sha 2>/dev/null || true)
+            PREV_TAG=$(cat "$COMPOSE_DIR/.previous-staging-sha" 2>/dev/null || true)
             if [ -n "$PREV_TAG" ]; then
               echo "Rolling back to ${{ env.IMAGE }}:${PREV_TAG}"
               docker pull ${{ env.IMAGE }}:${PREV_TAG}
@@ -161,8 +177,8 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: root
-          key: ${{ secrets.PROD_SSH_KEY }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.SSH_DEPLOY_KEY || secrets.PROD_SSH_KEY }}
           script: docker image prune -f
 
       - name: Fail workflow if health check failed

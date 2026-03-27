@@ -1,0 +1,190 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_ref:
+        description: >
+          Git ref (commit SHA or tag) currently deployed to staging.
+          Leave empty to deploy the latest commit on main.
+        required: false
+        default: ""
+      confirm:
+        description: "Type 'promote' to confirm production deployment"
+        required: true
+
+jobs:
+  validate:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - name: Require confirmation
+        if: inputs.confirm != 'promote'
+        run: |
+          echo "::error::You must type 'promote' to confirm production deployment."
+          exit 1
+
+      - name: Validate staging deployment
+        if: inputs.staging_ref != ''
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER }}
+          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          script: |
+            DEPLOYED_SHA=$(docker inspect ${{ env.IMAGE }}:staging --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || echo "")
+            if [ "$DEPLOYED_SHA" != "${{ inputs.staging_ref }}" ]; then
+              echo "::error::staging_ref ${{ inputs.staging_ref }} is not currently deployed to staging (deployed: $DEPLOYED_SHA)"
+              exit 1
+            fi
+            echo "Validated: ${{ inputs.staging_ref }} is deployed to staging"
+
+  ci:
+    runs-on: [self-hosted, Linux, X64]
+    needs: validate
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.staging_ref || 'main' }}
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    needs: ci
+    environment: production
+    permissions:
+      packages: write
+      contents: read
+
+    env:
+      IMAGE: ghcr.io/wopr-network/wopr-platform
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote staging image to production
+        run: |
+          docker pull ${{ env.IMAGE }}:staging
+
+          # Save current production as rollback target
+          docker pull ${{ env.IMAGE }}:production 2>/dev/null && \
+            docker tag ${{ env.IMAGE }}:production ${{ env.IMAGE }}:production-previous && \
+            docker push ${{ env.IMAGE }}:production-previous || true
+
+          # Retag staging as production
+          docker tag ${{ env.IMAGE }}:staging ${{ env.IMAGE }}:production
+          docker tag ${{ env.IMAGE }}:staging ${{ env.IMAGE }}:${{ inputs.staging_ref || github.sha }}
+
+          # Push production tags
+          docker push ${{ env.IMAGE }}:production
+          docker push ${{ env.IMAGE }}:${{ inputs.staging_ref || github.sha }}
+
+      - name: Record previous image on VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER }}
+          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          script: |
+            cd ${{ secrets.PRODUCTION_COMPOSE_DIR || '/opt/wopr-platform' }}
+            CURRENT=$(docker inspect --format='{{.Config.Image}}' $(docker compose ps -q platform-api 2>/dev/null) 2>/dev/null | grep -oP ':\K[a-f0-9]{7,}$' || true)
+            if [ -n "$CURRENT" ]; then
+              echo "$CURRENT" > .previous-production-sha
+              echo "Recorded previous SHA: $CURRENT"
+            else
+              echo "No previous production container found (first deploy)"
+            fi
+
+      - name: Deploy to production VPS
+        id: deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER }}
+          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          script: |
+            COMPOSE_DIR="${{ secrets.PRODUCTION_COMPOSE_DIR || '/opt/wopr-platform' }}"
+            if [ ! -f "$COMPOSE_DIR/docker-compose.yml" ]; then
+              echo "::error::docker-compose.yml not found at $COMPOSE_DIR/"
+              exit 1
+            fi
+            cd "$COMPOSE_DIR"
+            docker compose pull platform-api
+            docker compose up -d --force-recreate platform-api
+            docker image prune -f
+
+      - name: Verify deployment health
+        id: health_check
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER }}
+          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          script: |
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3200/health > /dev/null 2>&1; then
+                echo "Production API is healthy"
+                exit 0
+              fi
+              echo "Waiting for health check... ($i/30)"
+              sleep 2
+            done
+            echo "Health check timed out"
+            COMPOSE_DIR="${{ secrets.PRODUCTION_COMPOSE_DIR || '/opt/wopr-platform' }}"
+            cd "$COMPOSE_DIR"
+            docker compose logs --tail=30 platform-api
+            exit 1
+
+      - name: Rollback on failure
+        if: steps.health_check.outcome == 'failure'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER }}
+          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          script: |
+            echo "Health check failed — rolling back platform-api"
+            COMPOSE_DIR="${{ secrets.PRODUCTION_COMPOSE_DIR || '/opt/wopr-platform' }}"
+            cd "$COMPOSE_DIR"
+            docker compose logs --tail=30 platform-api
+            PREV_TAG=$(cat .previous-production-sha 2>/dev/null || true)
+            if [ -n "$PREV_TAG" ]; then
+              echo "Rolling back to ${{ env.IMAGE }}:${PREV_TAG}"
+              docker pull ${{ env.IMAGE }}:${PREV_TAG}
+              docker tag ${{ env.IMAGE }}:${PREV_TAG} ${{ env.IMAGE }}:production
+              docker compose up -d --force-recreate platform-api
+              echo "Rollback complete"
+            else
+              echo "::warning::No previous image tag available for rollback"
+              docker compose stop platform-api
+            fi
+
+      - name: Fail workflow if health check failed
+        if: steps.health_check.outcome == 'failure'
+        run: |
+          echo "::error::Production deployment health check failed. Rollback executed."
+          exit 1
