@@ -23,7 +23,7 @@ describe("BillingEmailService", () => {
       apiKey: "test-key",
       from: "noreply@wopr.bot",
     });
-    // Spy on send to avoid hitting Resend API (vi.mock("resend") doesn't intercept cross-package)
+    // Spy on send to avoid hitting Postmark API
     vi.spyOn(emailClient, "send").mockResolvedValue({ id: "email-123", success: true });
     service = new BillingEmailService({
       billingEmailRepo: new DrizzleBillingEmailRepository(db),

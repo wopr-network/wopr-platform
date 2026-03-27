@@ -28,7 +28,6 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@aws-sdk/client-ses": ">=3",
     "@hono/node-server": "^1.19.11",
     "@sentry/node": "^10.46.0",
     "@trpc/server": "^11.15.1",
@@ -42,7 +41,6 @@
     "lru-cache": "^11.2.7",
     "payram": "^1.0.1",
     "pg": "^8.20.0",
-    "resend": "^6.9.4",
     "stripe": "^21.0.1",
     "winston": "^3.19.0",
     "ws": "^8.20.0",

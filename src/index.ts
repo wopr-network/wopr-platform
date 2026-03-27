@@ -281,7 +281,7 @@ if (process.env.NODE_ENV !== "test") {
   if (productConfig.product.fromEmail) {
     setEmailClient(
       new EmailClient({
-        apiKey: process.env.RESEND_API_KEY ?? process.env.AWS_SES_REGION ?? "",
+        apiKey: process.env.POSTMARK_API_KEY ?? "",
         from: productConfig.product.fromEmail,
         replyTo: productConfig.product.emailSupport || undefined,
       }),
