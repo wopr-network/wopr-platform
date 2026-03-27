@@ -24,11 +24,11 @@ importers:
         specifier: ^10.46.0
         version: 10.46.0
       '@trpc/server':
-        specifier: ^11.15.0
-        version: 11.15.0(typescript@5.9.3)
+        specifier: ^11.15.1
+        version: 11.15.1(typescript@5.9.3)
       '@wopr-network/platform-core':
         specifier: 1.72.0
-        version: 1.72.0(25b1196c535557ecf4889f74118fc4f5)
+        version: 1.72.0(9f83ee05fdb10179644468b8bb8e20d9)
       '@wopr-network/wopr':
         specifier: 2.0.0
         version: 2.0.0(723edfc50d06d222c014b7af4df1e1a3)
@@ -1703,8 +1703,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@trpc/server@11.15.0':
-    resolution: {integrity: sha512-qLcodARy05fzMSrNG6VYtynsAmUCRaQ7SDm3Ynvryhylp2Zq4KN28qJeMlMqLeJKwZ05KukkcIsVTKzscWX1pQ==}
+  '@trpc/server@11.15.1':
+    resolution: {integrity: sha512-0A1fIBU0zDLXaSOhuHOChqM4mCCCi233FcPdPNXJ+FIVMd5VEGe33u6cehUavZMquIi6uIec9xymac2P4LgqMA==}
     hasBin: true
     peerDependencies:
       typescript: '>=5.7.2'
@@ -5234,7 +5234,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@trpc/server@11.15.0(typescript@5.9.3)':
+  '@trpc/server@11.15.1(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
 
@@ -5387,7 +5387,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@wopr-network/platform-core@1.72.0(25b1196c535557ecf4889f74118fc4f5)':
+  '@wopr-network/platform-core@1.72.0(9f83ee05fdb10179644468b8bb8e20d9)':
     dependencies:
       '@aws-sdk/client-ses': 3.1014.0
       '@hono/node-server': 1.19.11(hono@4.12.8)
@@ -5396,7 +5396,7 @@ snapshots:
       '@scure/base': 2.0.0
       '@scure/bip32': 2.0.1
       '@scure/bip39': 2.0.1
-      '@trpc/server': 11.15.0(typescript@5.9.3)
+      '@trpc/server': 11.15.1(typescript@5.9.3)
       '@wopr-network/crypto-plugins': 1.1.1(@wopr-network/platform-crypto-server@1.1.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.14)(mysql2@3.15.3)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3)(zod@4.3.6))(typescript@5.9.3)(zod@4.3.6)
       better-auth: 1.5.6(1ab544bb24ee8979854afc0fc10a1e4d)
       dockerode: 4.0.10
