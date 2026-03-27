@@ -97,7 +97,8 @@ export function validateRequiredEnvVars(): void {
 
   // --- POSTMARK_API_KEY: optional but required for transactional email ---
 
-  if (!process.env.POSTMARK_API_KEY) {
+  const postmarkApiKey = (process.env.POSTMARK_API_KEY ?? "").trim();
+  if (!postmarkApiKey || postmarkApiKey === "REPLACE_ME") {
     warnings.push(
       "POSTMARK_API_KEY is not set — transactional emails (billing notices, etc.) will fail silently. " +
         "Set this to enable Postmark email delivery.",
