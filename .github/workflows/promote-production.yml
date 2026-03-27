@@ -28,8 +28,8 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.SSH_DEPLOY_USER }}
-          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             DEPLOYED_SHA=$(docker inspect ${{ env.IMAGE }}:staging --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || echo "")
             if [ "$DEPLOYED_SHA" != "${{ inputs.staging_ref }}" ]; then
@@ -105,9 +105,9 @@ jobs:
       - name: Record previous image on VPS
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.PRODUCTION_HOST }}
-          username: ${{ secrets.SSH_DEPLOY_USER }}
-          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             cd ${{ secrets.PRODUCTION_COMPOSE_DIR || '/opt/wopr-platform' }}
             CURRENT=$(docker inspect --format='{{.Config.Image}}' $(docker compose ps -q platform-api 2>/dev/null) 2>/dev/null | grep -oP ':\K[a-f0-9]{7,}$' || true)
@@ -122,9 +122,9 @@ jobs:
         id: deploy
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.PRODUCTION_HOST }}
-          username: ${{ secrets.SSH_DEPLOY_USER }}
-          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             COMPOSE_DIR="${{ secrets.PRODUCTION_COMPOSE_DIR || '/opt/wopr-platform' }}"
             if [ ! -f "$COMPOSE_DIR/docker-compose.yml" ]; then
@@ -141,9 +141,9 @@ jobs:
         continue-on-error: true
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.PRODUCTION_HOST }}
-          username: ${{ secrets.SSH_DEPLOY_USER }}
-          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             for i in $(seq 1 30); do
               if curl -sf http://localhost:3200/health > /dev/null 2>&1; then
@@ -163,9 +163,9 @@ jobs:
         if: steps.health_check.outcome == 'failure'
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.PRODUCTION_HOST }}
-          username: ${{ secrets.SSH_DEPLOY_USER }}
-          key: ${{ secrets.SSH_DEPLOY_KEY }}
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.SSH_DEPLOY_USER || 'root' }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             echo "Health check failed — rolling back platform-api"
             COMPOSE_DIR="${{ secrets.PRODUCTION_COMPOSE_DIR || '/opt/wopr-platform' }}"
