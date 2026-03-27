@@ -278,15 +278,18 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire the email client singleton with DB-driven from/replyTo overrides so
   // all transactional emails use the product's configured sender address.
-  if (productConfig.product.fromEmail) {
+  const postmarkApiKey = (process.env.POSTMARK_API_KEY ?? "").trim();
+  if (productConfig.product.fromEmail && postmarkApiKey) {
     setEmailClient(
       new EmailClient({
-        apiKey: process.env.RESEND_API_KEY ?? process.env.AWS_SES_REGION ?? "",
+        apiKey: postmarkApiKey,
         from: productConfig.product.fromEmail,
         replyTo: productConfig.product.emailSupport || undefined,
       }),
     );
     logger.info(`Email client configured: from=${productConfig.product.fromEmail}`);
+  } else if (productConfig.product.fromEmail && !postmarkApiKey) {
+    logger.warn("Email client not initialized: POSTMARK_API_KEY is not set");
   }
 
   // ── Gateway wiring ──────────────────────────────────────────────────────────

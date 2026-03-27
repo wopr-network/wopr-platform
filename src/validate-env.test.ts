@@ -108,6 +108,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("PLATFORM_DOMAIN", "example.com");
     vi.stubEnv("COOKIE_DOMAIN", ".example.com");
     vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    vi.stubEnv("POSTMARK_API_KEY", "test-postmark-key");
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     expect(() => validateRequiredEnvVars()).not.toThrow();
     expect(warnSpy).not.toHaveBeenCalled();

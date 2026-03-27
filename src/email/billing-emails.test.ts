@@ -23,7 +23,7 @@ describe("BillingEmailService", () => {
       apiKey: "test-key",
       from: "noreply@wopr.bot",
     });
-    // Spy on send to avoid hitting Resend API (vi.mock("resend") doesn't intercept cross-package)
+    // Spy on send to avoid hitting Postmark API
     vi.spyOn(emailClient, "send").mockResolvedValue({ id: "email-123", success: true });
     service = new BillingEmailService({
       billingEmailRepo: new DrizzleBillingEmailRepository(db),
@@ -176,7 +176,7 @@ describe("BillingEmailService", () => {
   describe("error handling", () => {
     it("should return false and log when email sending fails", async () => {
       // Override the emailClient.send to throw
-      vi.spyOn(emailClient, "send").mockRejectedValueOnce(new Error("Resend error"));
+      vi.spyOn(emailClient, "send").mockRejectedValueOnce(new Error("Postmark error"));
 
       const sent = await service.sendLowBalanceWarning("user@test.com", "tenant-1", "$1.50", 3);
       expect(sent).toBe(false);

@@ -14,9 +14,6 @@ importers:
 
   .:
     dependencies:
-      '@aws-sdk/client-ses':
-        specifier: '>=3'
-        version: 3.1014.0
       '@hono/node-server':
         specifier: ^1.19.11
         version: 1.19.11(hono@4.12.8)
@@ -56,9 +53,6 @@ importers:
       pg:
         specifier: ^8.20.0
         version: 8.20.0
-      resend:
-        specifier: ^6.9.4
-        version: 6.9.4
       stripe:
         specifier: ^21.0.1
         version: 21.0.1(@types/node@25.5.0)

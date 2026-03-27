@@ -95,6 +95,16 @@ export function validateRequiredEnvVars(): void {
     warnings.push("COOKIE_DOMAIN is not set — falling back to .wopr.bot. Set this for custom domains.");
   }
 
+  // --- POSTMARK_API_KEY: optional but required for transactional email ---
+
+  const postmarkApiKey = (process.env.POSTMARK_API_KEY ?? "").trim();
+  if (!postmarkApiKey || postmarkApiKey === "REPLACE_ME") {
+    warnings.push(
+      "POSTMARK_API_KEY is not set — transactional emails (billing notices, etc.) will fail silently. " +
+        "Set this to enable Postmark email delivery.",
+    );
+  }
+
   // --- OPENROUTER_API_KEY: optional but required for hosted inference ---
 
   if (!process.env.OPENROUTER_API_KEY) {
