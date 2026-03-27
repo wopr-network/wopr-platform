@@ -28,7 +28,7 @@ importers:
         version: 11.15.1(typescript@5.9.3)
       '@wopr-network/platform-core':
         specifier: 1.72.0
-        version: 1.72.0(9f83ee05fdb10179644468b8bb8e20d9)
+        version: 1.72.0(794d33d4c0d7121e370bf3ed2eec3968)
       '@wopr-network/wopr':
         specifier: 2.0.0
         version: 2.0.0(723edfc50d06d222c014b7af4df1e1a3)
@@ -60,8 +60,8 @@ importers:
         specifier: ^6.9.4
         version: 6.9.4
       stripe:
-        specifier: ^21.0.0
-        version: 21.0.0(@types/node@25.5.0)
+        specifier: ^21.0.1
+        version: 21.0.1(@types/node@25.5.0)
       winston:
         specifier: ^3.19.0
         version: 3.19.0
@@ -3202,8 +3202,8 @@ packages:
     resolution: {integrity: sha512-4gB8na07fecVVkOI6Rs4e7T6NOTki5EmL7TUduTs6bu3EdnSycntVJ4re8kgZA+wx9IueI2Y11bfbgwtzuE0KQ==}
     engines: {node: '>=0.10.0'}
 
-  stripe@21.0.0:
-    resolution: {integrity: sha512-VlQ1QhjQAhmCgY3g3BgfZFLo8AkJw1r9zTrG4hdjSDX2AcwS5sPz4eHJG0zfzCO8zO/md0Xe+zrkxRqg604ZWA==}
+  stripe@21.0.1:
+    resolution: {integrity: sha512-ocv0j7dWttswDWV2XL/kb6+yiLpDXNXL3RQAOB5OB2kr49z0cEatdQc12+zP/j5nrXk6rAsT4N3y/NUvBbK7Pw==}
     engines: {node: '>=18'}
     peerDependencies:
       '@types/node': '>=18'
@@ -5387,7 +5387,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@wopr-network/platform-core@1.72.0(9f83ee05fdb10179644468b8bb8e20d9)':
+  '@wopr-network/platform-core@1.72.0(794d33d4c0d7121e370bf3ed2eec3968)':
     dependencies:
       '@aws-sdk/client-ses': 3.1014.0
       '@hono/node-server': 1.19.11(hono@4.12.8)
@@ -5407,7 +5407,7 @@ snapshots:
       pg: 8.20.0
       postmark: 4.0.7
       resend: 6.9.4
-      stripe: 21.0.0(@types/node@25.5.0)
+      stripe: 21.0.1(@types/node@25.5.0)
       viem: 2.47.6(typescript@5.9.3)(zod@4.3.6)
       ws: 8.20.0
       yaml: 2.8.3
@@ -6990,7 +6990,7 @@ snapshots:
 
   strip-json-comments@2.0.1: {}
 
-  stripe@21.0.0(@types/node@25.5.0):
+  stripe@21.0.1(@types/node@25.5.0):
     optionalDependencies:
       '@types/node': 25.5.0
 
