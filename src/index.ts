@@ -1079,9 +1079,11 @@ if (process.env.NODE_ENV !== "test") {
     // Initialize BetterAuth before getEmailVerifier() — must be called first.
     {
       const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
+      const cookieDomain = process.env.COOKIE_DOMAIN || ".wopr.bot";
       initBetterAuth({
         pool: getPool(),
         db: getDb(),
+        cookieDomain,
         onUserCreated: async (userId) => {
           try {
             const { grantSignupCredits } = await import("@wopr-network/platform-core/credits");
