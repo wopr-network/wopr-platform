@@ -9,7 +9,7 @@ import { buildAddonCosts } from "@wopr-network/platform-core/monetization/addons
 import { ADDON_CATALOG } from "@wopr-network/platform-core/monetization/addons/addon-catalog";
 import { DrizzleTenantAddonRepository } from "@wopr-network/platform-core/monetization/addons/addon-repository";
 import { DrizzleLedger } from "@wopr-network/platform-core";
-import { DAILY_BOT_COST, runRuntimeDeductions } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
+import { DAILY_BOT_COST, dailyBotCost, runRuntimeDeductions } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 
 vi.mock("@wopr-network/platform-core/config/logger", () => ({
@@ -49,6 +49,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
+    await botInstanceRepo.startBilling(botId);
     await ledger.credit(tenantId, Credit.fromCents(500), "purchase", "top-up");
     await addonRepo.enable(tenantId, "gpu_acceleration");
 
@@ -63,9 +64,9 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     expect(result.suspended).toEqual([]);
     expect(result.errors).toEqual([]);
 
-    // Balance = 500 - 17 (bot runtime) - 50 (gpu_acceleration) = 433
+    // Balance = 500 - dailyBotCost (bot runtime) - 50 (gpu_acceleration)
     const balance = await ledger.balance(tenantId);
-    expect(balance.toCents()).toBe(500 - DAILY_BOT_COST.toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
+    expect(balance.toCents()).toBe(500 - dailyBotCost(TODAY).toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
 
     const history = await ledger.history(tenantId);
     const addonTransactions = history.filter((tx) => tx.entryType === "addon");
@@ -81,6 +82,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
+    await botInstanceRepo.startBilling(botId);
     await ledger.credit(tenantId, Credit.fromCents(500), "purchase", "top-up");
     await addonRepo.enable(tenantId, "gpu_acceleration");
     await addonRepo.enable(tenantId, "priority_queue");
@@ -96,10 +98,10 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     expect(result.suspended).toEqual([]);
     expect(result.errors).toEqual([]);
 
-    // Balance = 500 - 17 (bot) - 70 (gpu 50 + priority 20) = 413
+    // Balance = 500 - dailyBotCost (bot) - 70 (gpu 50 + priority 20)
     const balance = await ledger.balance(tenantId);
     expect(balance.toCents()).toBe(
-      500 - DAILY_BOT_COST.toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents() - ADDON_CATALOG.priority_queue.dailyCost.toCents(),
+      500 - dailyBotCost(TODAY).toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents() - ADDON_CATALOG.priority_queue.dailyCost.toCents(),
     );
   });
 
@@ -108,6 +110,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
+    await botInstanceRepo.startBilling(botId);
     await ledger.credit(tenantId, Credit.fromCents(500), "purchase", "top-up");
 
     // Enable addon, run cron day 1
@@ -122,8 +125,8 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     expect(resultDay1.errors).toEqual([]);
 
     const balanceAfterDay1 = await ledger.balance(tenantId);
-    // 500 - 17 - 50 = 433
-    expect(balanceAfterDay1.toCents()).toBe(500 - DAILY_BOT_COST.toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
+    // 500 - dailyBotCost("2026-01-15") - 50 (gpu addon)
+    expect(balanceAfterDay1.toCents()).toBe(500 - dailyBotCost("2026-01-15").toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
 
     // Disable addon, run cron day 2
     await addonRepo.disable(tenantId, "gpu_acceleration");
@@ -137,9 +140,9 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     expect(resultDay2.errors).toEqual([]);
 
     const balanceAfterDay2 = await ledger.balance(tenantId);
-    // 433 - 17 (bot only, no addon) = 416
+    // balanceAfterDay1 - dailyBotCost("2026-01-16") (bot only, no addon)
     expect(balanceAfterDay2.toCents()).toBe(
-      500 - DAILY_BOT_COST.toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents() - DAILY_BOT_COST.toCents(),
+      500 - dailyBotCost("2026-01-15").toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents() - dailyBotCost("2026-01-16").toCents(),
     );
 
     // Verify no addon transaction on day 2
@@ -153,8 +156,9 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
-    // Bot cost = 17, gpu addon = 50. Give bot cost + partial: enough for runtime but not addon.
-    await ledger.credit(tenantId, Credit.fromCents(DAILY_BOT_COST.toCents() + 23), "purchase", "small-grant");
+    await botInstanceRepo.startBilling(botId);
+    // Give enough for bot runtime plus a partial amount (less than gpu addon = 50 cents).
+    await ledger.credit(tenantId, Credit.fromCents(dailyBotCost(TODAY).toCents() + 23), "purchase", "small-grant");
     await addonRepo.enable(tenantId, "gpu_acceleration");
 
     const onSuspend = vi.fn();
@@ -188,6 +192,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
+    await botInstanceRepo.startBilling(botId);
     await ledger.credit(tenantId, Credit.fromCents(500), "purchase", "top-up");
     await addonRepo.enable(tenantId, "gpu_acceleration");
 
@@ -212,7 +217,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     // Balance unchanged after second run
     const balance = await ledger.balance(tenantId);
     expect(balance.toCents()).toBe(
-      500 - DAILY_BOT_COST.toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents(),
+      500 - dailyBotCost(TODAY).toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents(),
     );
   });
 });

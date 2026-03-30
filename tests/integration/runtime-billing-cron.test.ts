@@ -11,6 +11,7 @@ import {
   DAILY_BOT_COST,
   LOW_BALANCE_THRESHOLD,
   buildResourceTierCosts,
+  dailyBotCost,
   runRuntimeDeductions,
 } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
@@ -48,6 +49,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot-1");
+    await botInstanceRepo.startBilling(botId);
     await ledger.credit(tenantId, Credit.fromCents(500), "purchase", "top-up");
 
     const result = await runRuntimeDeductions({
@@ -61,7 +63,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     expect(result.errors).toEqual([]);
 
     const balance = await ledger.balance(tenantId);
-    expect(balance.toCents()).toBe(500 - DAILY_BOT_COST.toCents());
+    expect(balance.toCents()).toBe(500 - dailyBotCost(TODAY).toCents());
 
     const history = await ledger.history(tenantId);
     const debit = history.find((tx) => tx.entryType === "bot_runtime");
@@ -73,7 +75,9 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
 
     for (let i = 0; i < 3; i++) {
-      await botBilling.registerBot(randomUUID(), tenantId, `bot-${i}`);
+      const id = randomUUID();
+      await botBilling.registerBot(id, tenantId, `bot-${i}`);
+      await botInstanceRepo.startBilling(id);
     }
     await ledger.credit(tenantId, Credit.fromCents(500), "purchase", "top-up");
 
@@ -87,7 +91,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     expect(result.suspended).toEqual([]);
 
     const balance = await ledger.balance(tenantId);
-    expect(balance.toCents()).toBe(500 - 3 * DAILY_BOT_COST.toCents());
+    expect(balance.toCents()).toBe(500 - 3 * dailyBotCost(TODAY).toCents());
   });
 
   it("partially debits and suspends when balance is less than daily cost", async () => {
@@ -95,6 +99,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "low-balance-bot");
+    await botInstanceRepo.startBilling(botId);
     await ledger.credit(tenantId, Credit.fromCents(10), "purchase", "tiny-grant");
 
     const onSuspend = vi.fn(async (tid: string) => {
@@ -124,7 +129,8 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "low-bal-bot");
-    const startCents = LOW_BALANCE_THRESHOLD.toCents() + DAILY_BOT_COST.toCents() - 7;
+    await botInstanceRepo.startBilling(botId);
+    const startCents = LOW_BALANCE_THRESHOLD.toCents() + dailyBotCost(TODAY).toCents() - 7;
     await ledger.credit(tenantId, Credit.fromCents(startCents), "purchase", "grant");
 
     const onLowBalance = vi.fn();
@@ -139,12 +145,14 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     expect(onLowBalance).toHaveBeenCalledOnce();
     const [calledTenant, calledBalance] = onLowBalance.mock.calls[0];
     expect(calledTenant).toBe(tenantId);
-    expect(calledBalance.toCents()).toBe(startCents - DAILY_BOT_COST.toCents());
+    expect(calledBalance.toCents()).toBe(startCents - dailyBotCost(TODAY).toCents());
   });
 
   it("is idempotent — second run on same date skips already-billed tenants", async () => {
     const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
-    await botBilling.registerBot(randomUUID(), tenantId, "idem-bot");
+    const idempotentBotId = randomUUID();
+    await botBilling.registerBot(idempotentBotId, tenantId, "idem-bot");
+    await botInstanceRepo.startBilling(idempotentBotId);
     await ledger.credit(tenantId, Credit.fromCents(500), "purchase", "grant");
 
     const cfg = {
@@ -155,12 +163,12 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
 
     const first = await runRuntimeDeductions(cfg);
     expect(first.processed).toBe(1);
-    expect((await ledger.balance(tenantId)).toCents()).toBe(500 - DAILY_BOT_COST.toCents());
+    expect((await ledger.balance(tenantId)).toCents()).toBe(500 - dailyBotCost("2026-06-15").toCents());
 
     const second = await runRuntimeDeductions(cfg);
     expect(second.processed).toBe(0);
     expect(second.skipped).toContain(tenantId);
-    expect((await ledger.balance(tenantId)).toCents()).toBe(500 - DAILY_BOT_COST.toCents());
+    expect((await ledger.balance(tenantId)).toCents()).toBe(500 - dailyBotCost("2026-06-15").toCents());
   });
 
   it("charges resource tier surcharge on top of base cost for pro-tier bot", async () => {
@@ -168,12 +176,13 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "pro-bot");
+    await botInstanceRepo.startBilling(botId);
     await botInstanceRepo.setResourceTier(botId, "pro");
 
-    const proSurcharge = RESOURCE_TIERS.pro.dailyCost.toCents(); // 10 cents
-    const totalExpected = DAILY_BOT_COST.toCents() + proSurcharge;
-    const startBalance = totalExpected + 50;
-    await ledger.credit(tenantId, Credit.fromCents(startBalance), "purchase", "grant");
+    const proSurcharge = RESOURCE_TIERS.pro.dailyCost; // 10 cents
+    const totalExpected = dailyBotCost(TODAY).add(proSurcharge);
+    const startCredit = totalExpected.add(Credit.fromCents(50));
+    await ledger.credit(tenantId, startCredit, "purchase", "grant");
 
     const getResourceTierCosts = buildResourceTierCosts(
       botInstanceRepo,
@@ -191,7 +200,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     expect(result.suspended).toEqual([]);
 
     const balance = await ledger.balance(tenantId);
-    expect(balance.toCents()).toBe(startBalance - totalExpected);
+    expect(balance.toCents()).toBe(50);
 
     const history = await ledger.history(tenantId);
     const types = history.map((tx) => tx.entryType);

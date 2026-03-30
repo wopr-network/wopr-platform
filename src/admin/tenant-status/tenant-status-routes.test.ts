@@ -161,6 +161,7 @@ describe("admin tenant status tRPC routes", () => {
   let auditLog: AdminAuditLog;
   let creditLedger: ILedger;
   let botBilling: BotBilling;
+  let botInstanceRepo: DrizzleBotInstanceRepository;
 
   beforeAll(async () => {
     const t = await createTestDb();
@@ -179,7 +180,8 @@ describe("admin tenant status tRPC routes", () => {
     statusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     creditLedger = makeMockLedger();
-    botBilling = new BotBilling(new DrizzleBotInstanceRepository(db));
+    botInstanceRepo = new DrizzleBotInstanceRepository(db);
+    botBilling = new BotBilling(botInstanceRepo);
 
     setAdminRouterDeps({
       getAuditLog: () => auditLog,
@@ -263,7 +265,9 @@ describe("admin tenant status tRPC routes", () => {
     it("suspends all bots for the tenant", async () => {
       await statusStore.ensureExists("tenant-1");
       await botBilling.registerBot("bot-1", "tenant-1", "bot-a");
+      await botInstanceRepo.startBilling("bot-1");
       await botBilling.registerBot("bot-2", "tenant-1", "bot-b");
+      await botInstanceRepo.startBilling("bot-2");
 
       const caller = createCaller(adminContext());
       const result = await caller.admin.suspendTenant({
@@ -445,6 +449,7 @@ describe("admin tenant status tRPC routes", () => {
     it("suspends all bots for the tenant", async () => {
       await statusStore.ensureExists("tenant-1");
       await botBilling.registerBot("bot-1", "tenant-1", "bot-a");
+      await botInstanceRepo.startBilling("bot-1");
 
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
