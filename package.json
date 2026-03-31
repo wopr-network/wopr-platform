@@ -28,7 +28,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.11",
+    "@hono/node-server": "^1.19.12",
     "@sentry/node": "^10.46.0",
     "@trpc/server": "^11.16.0",
     "@wopr-network/platform-core": "1.72.0",
